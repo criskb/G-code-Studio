@@ -1,0 +1,152 @@
+{
+  "ui": {
+    "theme": "dark",
+    "autoRun": true,
+    "panX": 40,
+    "panY": 90,
+    "zoom": 1.0,
+    "selectedNodeId": "strand1"
+  },
+  "params": [
+    {"k":"pi","v":"3.141592653589793","locked":true},
+    {"k":"tau","v":"6.283185307179586","locked":true},
+    {"k":"A","v":"50"},
+    {"k":"B","v":"10"},
+    {"k":"C","v":"6"}
+  ],
+  "orca": {
+    "printers": [],
+    "filaments": [],
+    "processes": [],
+    "files": {},
+    "lastImported": ""
+  },
+  "outputs": {
+    "gcode": "",
+    "path": [],
+    "mesh": null,
+    "toolpath": null,
+    "preview": null,
+    "previewWarning": "",
+    "stats": {"points":0,"length":0,"e":0,"timeMin":0}
+  },
+  "nodes": {
+    "mesh1": {
+      "id": "mesh1",
+      "type": "Mesh Primitive",
+      "x": 60,
+      "y": 80,
+      "w": 360,
+      "h": 520,
+      "data": {
+        "kind": "cube",
+        "size": 120,
+        "height": 60,
+        "seg": 50,
+        "waveAmp": 8,
+        "waveFreq": 3,
+        "bedAlign": true,
+        "previewMode": "wireframe"
+      }
+    },
+    "slice1": {
+      "id": "slice1",
+      "type": "hd-slice-engine",
+      "x": 470,
+      "y": 110,
+      "w": 360,
+      "h": 360,
+      "data": {
+        "fidelityMode": "balanced",
+        "layerHeight": 0.2,
+        "lineWidth": 0.45,
+        "maxChordError": 0.05,
+        "minSegmentLen": 0.08,
+        "adaptiveBy": "both",
+        "preserveArcs": true
+      }
+    },
+    "motion1": {
+      "id": "motion1",
+      "type": "motion-planner-sim",
+      "x": 900,
+      "y": 110,
+      "w": 360,
+      "h": 300,
+      "data": {
+        "planner": "junctionDeviation",
+        "maxAccel": 8000,
+        "jdValue": 0.02,
+        "maxJerk": 10,
+        "maxVf_mm3s": 18
+      }
+    },
+    "scalar1": {
+      "id": "scalar1",
+      "type": "scalar-field-visualizer",
+      "x": 1330,
+      "y": 110,
+      "w": 360,
+      "h": 260,
+      "data": {
+        "field": "speed",
+        "rangeMode": "auto",
+        "minValue": 0,
+        "maxValue": 100,
+        "palette": "prusaLike"
+      }
+    },
+    "strand1": {
+      "id": "strand1",
+      "type": "strand-mesher",
+      "x": 1750,
+      "y": 110,
+      "w": 360,
+      "h": 260,
+      "data": {
+        "beadShape": "capsule",
+        "segmentsPerMm": 2,
+        "cornerMiterLimit": 1.5,
+        "overlapModel": "simple",
+        "limitToFeatures": "[\"perimeter\",\"top\",\"bridge\",\"infill\",\"support\"]"
+      }
+    },
+    "printer1": {
+      "id": "printer1",
+      "type": "Printer",
+      "x": 470,
+      "y": 540,
+      "w": 360,
+      "h": 320,
+      "data": {
+        "name": "Generic FDM",
+        "bedW": 220,
+        "bedD": 220,
+        "bedH": 250,
+        "origin": "center",
+        "offsetX": 0,
+        "offsetY": 0,
+        "travelZ": 5,
+        "nozzle": 0.4,
+        "lineWidth": 0.45,
+        "filamentDia": 1.75,
+        "extrusionMult": 1.0,
+        "tempNozzle": 210,
+        "tempBed": 60,
+        "speedPrint": 1800,
+        "speedTravel": 6000,
+        "startGcode": "M104 S210\nM140 S60\nG28\nG92 E0",
+        "endGcode": "M104 S0\nM140 S0\nG28 X0\nM84"
+      }
+    }
+  },
+  "links": [
+    {"id":"link1","from":{"node":"mesh1","port":"mesh","type":"mesh"},"to":{"node":"slice1","port":"mesh","type":"mesh"}},
+    {"id":"link2","from":{"node":"printer1","port":"profile","type":"profile"},"to":{"node":"slice1","port":"profile","type":"profile"}},
+    {"id":"link3","from":{"node":"slice1","port":"toolpath","type":"toolpath"},"to":{"node":"motion1","port":"toolpath","type":"toolpath"}},
+    {"id":"link4","from":{"node":"printer1","port":"profile","type":"profile"},"to":{"node":"motion1","port":"machineProfile","type":"profile"}},
+    {"id":"link5","from":{"node":"motion1","port":"motionAnnotatedToolpath","type":"toolpath"},"to":{"node":"scalar1","port":"toolpath","type":"toolpath"}},
+    {"id":"link6","from":{"node":"scalar1","port":"coloredToolpath","type":"toolpath"},"to":{"node":"strand1","port":"toolpath","type":"toolpath"}},
+    {"id":"link7","from":{"node":"printer1","port":"profile","type":"profile"},"to":{"node":"strand1","port":"profile","type":"profile"}}
+  ]
+}

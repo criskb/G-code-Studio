@@ -236,3 +236,78 @@ const DEFAULT_SLICER_SETTINGS = {
   maxLayers:0, maxSegs:0,
   spacing:1.0, step:0.6, angleDeg:0, margin:0, surfaceSerp:true, cellSize:0, maxPts:0
 };
+
+const SCHEMA_HD_SLICE_ENGINE = [
+  { kind:"group", title:"Quality", rows:[
+    { items:[
+      {key:"fidelityMode", label:"Fidelity", ui:"select", options:[["draft","Draft"],["balanced","Balanced"],["hd","HD"]], default:"balanced"},
+      {key:"adaptiveBy", label:"Adaptive by", ui:"select", options:[["curvature","Curvature"],["cuspHeight","Cusp height"],["both","Both"]], default:"both"},
+    ]},
+    { items:[
+      {key:"layerHeight", label:"Layer height", ui:"number", min:0.05, max:0.6, step:0.01, default:0.2},
+      {key:"lineWidth", label:"Line width", ui:"number", min:0.2, max:1.2, step:0.01, default:0.45},
+    ]},
+  ]},
+  { kind:"group", title:"Adaptive Fidelity", rows:[
+    { items:[
+      {key:"maxChordError", label:"Max chord error", ui:"number", min:0.005, max:0.5, step:0.005, default:0.05},
+      {key:"minSegmentLen", label:"Min segment length", ui:"number", min:0.01, max:2.0, step:0.01, default:0.08},
+    ]},
+    { items:[
+      {key:"preserveArcs", label:"Preserve arcs", ui:"toggle", default:true},
+      {key:"_", label:" ", ui:"text", disabled:true, default:""},
+    ]},
+  ], note:"MVP slices fall back to a demo toolpath when full HD slicing is not available." },
+];
+
+const SCHEMA_MOTION_PLANNER_SIM = [
+  { kind:"group", title:"Planner", rows:[
+    { items:[
+      {key:"planner", label:"Planner", ui:"select", options:[["classicJerk","Classic Jerk"],["junctionDeviation","Junction Deviation"],["inputShaperProxy","Input Shaper Proxy"]], default:"junctionDeviation"},
+      {key:"jdValue", label:"JD value", ui:"number", min:0.001, max:0.2, step:0.001, default:0.02},
+    ]},
+    { items:[
+      {key:"maxAccel", label:"Max accel", ui:"number", min:100, max:50000, step:100, default:8000},
+      {key:"maxJerk", label:"Max jerk", ui:"number", min:1, max:50, step:1, default:10},
+    ]},
+    { items:[
+      {key:"maxVf_mm3s", label:"Max VFR (mm³/s)", ui:"number", min:1, max:60, step:0.5, default:18},
+      {key:"_", label:" ", ui:"text", disabled:true, default:""},
+    ]},
+  ]},
+];
+
+const SCHEMA_SCALAR_FIELD_VIS = [
+  { kind:"group", title:"Field", rows:[
+    { items:[
+      {key:"field", label:"Field", ui:"select", options:[
+        ["speed","Speed"],["flow","Flow"],["accel","Accel"],["linewidth","Line width"],
+        ["temp","Temp"],["fan","Fan"],["jerkProxy","Jerk proxy"],["cornering","Cornering"]
+      ], default:"speed"},
+      {key:"palette", label:"Palette", ui:"select", options:[["prusaLike","Prusa-like"],["viridis","Viridis"],["grayscale","Grayscale"]], default:"prusaLike"},
+    ]},
+    { items:[
+      {key:"rangeMode", label:"Range", ui:"select", options:[["auto","Auto"],["manual","Manual"]], default:"auto"},
+      {key:"minValue", label:"Min", ui:"number", default:0},
+      {key:"maxValue", label:"Max", ui:"number", default:100},
+    ]},
+  ]},
+];
+
+const SCHEMA_STRAND_MESHER = [
+  { kind:"group", title:"Geometry", rows:[
+    { items:[
+      {key:"beadShape", label:"Bead shape", ui:"select", options:[["oval","Oval"],["rectangle","Rectangle"],["capsule","Capsule"]], default:"capsule"},
+      {key:"segmentsPerMm", label:"Segments/mm", ui:"number", min:0.2, max:10.0, step:0.1, default:2.0},
+    ]},
+    { items:[
+      {key:"cornerMiterLimit", label:"Corner miter", ui:"number", min:0.5, max:5.0, step:0.1, default:1.5},
+      {key:"overlapModel", label:"Overlap model", ui:"select", options:[["none","None"],["simple","Simple"],["volumetric-lite","Volumetric-lite"]], default:"simple"},
+    ]},
+  ]},
+  { kind:"group", title:"Filters", rows:[
+    { items:[
+      {key:"limitToFeatures", label:"Limit features", ui:"text", default:"[\"perimeter\",\"top\",\"bridge\",\"infill\",\"support\"]", hint:"JSON array of feature names to include."},
+    ]},
+  ]},
+];
