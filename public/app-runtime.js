@@ -24,6 +24,56 @@ function evalNode(nodeId, ctx, stack=[]){
   evalCache.set(nodeId, out);
   return out;
 }
+
+function collectPreviewOutputs(){
+  let mesh = state.outputs.mesh;
+  let path = state.outputs.path;
+  let toolpath = null;
+  let previewToolpath = null;
+  let previewMesh = null;
+  let previewFallback = null;
+
+  for(const n of Object.values(state.nodes)){
+    const def = NODE_DEFS[n.type];
+    if(!def?.outputs?.length) continue;
+    const out = evalCache.get(n.id);
+    if(!out) continue;
+    for(const o of def.outputs){
+      const val = out[o.name];
+      if(!val) continue;
+      if(o.type === "mesh") mesh = val;
+      if(o.type === "path" && Array.isArray(val)) path = val;
+      if(o.type === "toolpath") toolpath = val;
+      if(o.type === "preview") previewFallback = val;
+    }
+    if(out.preview?.type === "toolpath") previewToolpath = out.preview;
+    else if(out.preview?.type === "mesh") previewMesh = out.preview;
+    else if(out.preview) previewFallback = out.preview;
+  }
+
+  if(previewToolpath?.toolpath) toolpath = previewToolpath.toolpath;
+  if(previewMesh?.mesh) mesh = previewMesh.mesh;
+
+  let preview = previewToolpath || previewFallback || null;
+  if(preview && previewMesh?.mesh){
+    preview = {...preview, mesh: previewMesh.mesh};
+  }else if(!preview && previewMesh){
+    preview = previewMesh;
+  }
+
+  state.outputs.mesh = mesh;
+  state.outputs.preview = preview;
+  state.outputs.toolpath = toolpath;
+
+  if(toolpath){
+    const converted = toolpathToPath(toolpath, {maxMoves:200000});
+    state.outputs.path = converted.path;
+    state.outputs.previewWarning = converted.warning;
+  }else{
+    state.outputs.path = path || [];
+    state.outputs.previewWarning = "";
+  }
+}
 function evaluateGraph(){
   const t0 = performance.now();
   setStatus("Running…");
@@ -52,18 +102,30 @@ function evaluateGraph(){
     // Preview-only mode: no Export node, but still evaluate upstream mesh/path for the preview
     let mesh = null;
     let path = [];
+    let toolpath = null;
+    let preview = null;
     for(const n of Object.values(state.nodes)){
       const def = NODE_DEFS[n.type];
       if(!def?.outputs?.length) continue;
-      const wants = def.outputs.some(o=>o.type==="mesh" || o.type==="path");
+      const wants = def.outputs.some(o=>o.type==="mesh" || o.type==="path" || o.type==="toolpath" || o.type==="preview");
       if(!wants) continue;
       const out = evalNode(n.id, ctx);
-      if(out?.mesh) mesh = out.mesh;
-      if(Array.isArray(out?.path)) path = out.path;
+      for(const o of def.outputs){
+        const val = out?.[o.name];
+        if(!val) continue;
+        if(o.type === "mesh") mesh = val;
+        if(o.type === "path" && Array.isArray(val)) path = val;
+        if(o.type === "toolpath") toolpath = val;
+        if(o.type === "preview") preview = val;
+      }
+      if(out?.preview) preview = out.preview;
     }
     state.outputs.mesh = mesh;
     state.outputs.path = Array.isArray(path) ? path : [];
+    state.outputs.toolpath = toolpath;
+    state.outputs.preview = preview;
     state.outputs.gcode = "";
+    collectPreviewOutputs();
     state.outputs.stats = {points:(state.outputs.path?.length||0), length:0, e:0, timeMin:0};
     evalDirty = false;
     const dt = Math.round(performance.now() - t0);
@@ -85,6 +147,7 @@ function evaluateGraph(){
   }
 
   evalDirty = false;
+  collectPreviewOutputs();
   const dt = Math.round(performance.now() - t0);
   setStatus(`OK • ${dt}ms`);
   updateOutputUI();
@@ -1360,6 +1423,9 @@ function clearOutputs(){
   state.outputs.gcode = "";
   state.outputs.path = [];
   state.outputs.mesh = null;
+  state.outputs.toolpath = null;
+  state.outputs.preview = null;
+  state.outputs.previewWarning = "";
   state.outputs.stats = {points:0,length:0,e:0,timeMin:0};
   updateOutputUI();
   schedulePreviewUpdate();
@@ -1654,6 +1720,7 @@ const fs2 = `
 `;
 const prog2 = glCreateProgram(gl, vs2, fs2);
 preview.progSolid = prog2;
+preview.aPos2 = gl.getAttribLocation(prog2, "aPos");
 preview.aNor = gl.getAttribLocation(prog2, "aNor");
 preview.uVP2 = gl.getUniformLocation(prog2, "uVP");
 preview.uLight = gl.getUniformLocation(prog2, "uLight");
@@ -1787,6 +1854,61 @@ function roleToRGBA(role){
   return hexToRGBAf(hex, a);
 }
 
+function tToRGBA(t){
+  const tt = Math.max(0, Math.min(1, t));
+  const r = Math.round(220 * tt + 30);
+  const g = Math.round(120 * (1 - Math.abs(tt - 0.5) * 2) + 60);
+  const b = Math.round(240 * (1 - tt) + 15);
+  return [r/255, g/255, b/255, 0.95];
+}
+
+function getPreviewColor(pt){
+  const overlay = previewFilter?.overlay || "featureType";
+  if(overlay && overlay !== "featureType" && overlay !== "role"){
+    const vis = pt?.meta?.visual;
+    if(vis && (vis.field === overlay || !vis.field)){
+      if(Array.isArray(vis.color)) return vis.color;
+      if(Number.isFinite(vis.t)) return tToRGBA(vis.t);
+    }
+  }
+  const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
+  return roleToRGBA(role);
+}
+
+function toolpathToPath(toolpath, options){
+  if(!toolpath || !toolpath.layers) return {path:[], warning:""};
+  const maxMoves = options?.maxMoves ?? 200000;
+  let moveCount = 0;
+  for(const layer of toolpath.layers){ moveCount += (layer.moves||[]).length; }
+  const step = moveCount > maxMoves ? Math.ceil(moveCount / maxMoves) : 1;
+  const warning = step > 1 ? `Preview decimated: ${moveCount.toLocaleString()} moves → every ${step}th.` : "";
+  const path = [];
+  let idx = 0;
+  let last = null;
+  const layerHeight = (toolpath.layers?.length > 1)
+    ? Math.abs((toolpath.layers[1].z ?? 0) - (toolpath.layers[0].z ?? 0)) || 0.2
+    : 0.2;
+
+  for(let li=0; li<toolpath.layers.length; li++){
+    const layer = toolpath.layers[li];
+    const layerZ = layer.z ?? last?.z ?? 0;
+    for(const move of (layer.moves || [])){
+      idx += 1;
+      if(step > 1 && (idx % step) !== 0) continue;
+      const x = move.x ?? last?.x ?? 0;
+      const y = move.y ?? last?.y ?? 0;
+      const z = move.z ?? layerZ ?? last?.z ?? 0;
+      const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
+      if(!meta.role && meta.feature) meta.role = meta.feature;
+      if(meta.layerHeight == null) meta.layerHeight = layerHeight;
+      const travel = move.kind === "travel" || meta.feature === "travel";
+      path.push({x,y,z, layer: li, travel, meta, role: meta.role});
+      last = {x,y,z};
+    }
+  }
+  return {path, warning};
+}
+
 
 
 function uploadBuffer(buf, arr){
@@ -1836,8 +1958,7 @@ function setPreviewPath(machinePath){
     const Y = pt.Y ?? pt.y ?? 0;
     const Z = pt.z ?? 0;
     pos.push(X, Y, Z);
-    const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
-    const rgba = roleToRGBA(role);
+    const rgba = getPreviewColor(pt);
     col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
   };
 
@@ -1877,12 +1998,14 @@ function setPreviewMesh(meshModel, profile){
 
   // cache hash for MV (tri count + bounds)
   try{
-    const b = meshModel?.bounds || (meshModel?.tris ? computeMeshBounds(meshModel.tris) : null);
-    const h = `${meshModel?.tris?.length||0}|${b?.minx||0},${b?.miny||0},${b?.minz||0}|${b?.maxx||0},${b?.maxy||0},${b?.maxz||0}`;
+    const trisHash = meshToTris(meshModel) || new Float32Array(0);
+    const b = meshModel?.bounds || (trisHash.length ? computeMeshBounds(trisHash) : null);
+    const h = `${trisHash.length||0}|${b?.minx||0},${b?.miny||0},${b?.minz||0}|${b?.maxx||0},${b?.maxy||0},${b?.maxz||0}`;
     preview.lastMeshHash = h;
   }catch(_){}
 
-  if(!meshModel || !meshModel.tris || meshModel.tris.length<9){
+  const tris = meshToTris(meshModel);
+  if(!meshModel || !tris || tris.length<9){
     uploadBuffer(preview.meshBuf, new Float32Array(0));
     preview.counts.mesh = 0;
     uploadBuffer(preview.meshTriPosBuf, new Float32Array(0));
@@ -1891,7 +2014,6 @@ function setPreviewMesh(meshModel, profile){
     return;
   }
 
-  const tris = meshModel.tris;
   const triCount = Math.floor(tris.length/9);
   const maxTris = 50000;
   const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;
@@ -1958,8 +2080,9 @@ function fitPreviewToData(){
 
 // Include mesh bounds (if present) so fit centers on imported geometry too
 const mesh = state.outputs.mesh;
-if(mesh && mesh.tris && mesh.tris.length>=9){
-  const b = mesh.bounds || computeMeshBounds(mesh.tris);
+const meshTris = meshToTris(mesh);
+if(mesh && meshTris && meshTris.length>=9){
+  const b = mesh.bounds || computeMeshBounds(meshTris);
   const corners = [
     [b.min.x, b.min.y],
     [b.max.x, b.min.y],
@@ -1975,7 +2098,7 @@ if(mesh && mesh.tris && mesh.tris.length>=9){
   maxZ = Math.max(maxZ, b.max.z);
 }
 
-  if(!pts.length && !(mesh && mesh.tris && mesh.tris.length>=9)){
+  if(!pts.length && !(mesh && meshTris && meshTris.length>=9)){
     preview.cam.target = v3(prof.bedW/2, prof.bedD/2, 35);
     preview.cam.radius = Math.max(prof.bedW, prof.bedD)*1.9;
     return;
@@ -2063,13 +2186,34 @@ function drawPreviewLoop(){
   gl.drawArrays(gl.LINES, 0, preview.counts.bed);
 
 
-// Draw mesh (wireframe)
-if(preview.counts.mesh>1){
-  setColor(text, 0.14);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshBuf);
-  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.14));
-  gl.drawArrays(gl.LINES, 0, preview.counts.mesh);
+// Draw mesh (wireframe/solid)
+if(previewMeshSettings.render !== "off"){
+  if(previewMeshSettings.render !== "solid" && preview.counts.mesh>1){
+    setColor(text, 0.14);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshBuf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.14));
+    gl.drawArrays(gl.LINES, 0, preview.counts.mesh);
+  }
+
+  if(previewMeshSettings.render !== "wire" && preview.countsTris>2 && preview.progSolid){
+    gl.useProgram(preview.progSolid);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshTriPosBuf);
+    if(preview.aPos2 >= 0){
+      gl.enableVertexAttribArray(preview.aPos2);
+      gl.vertexAttribPointer(preview.aPos2, 3, gl.FLOAT, false, 0, 0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshTriNorBuf);
+    if(preview.aNor >= 0){
+      gl.enableVertexAttribArray(preview.aNor);
+      gl.vertexAttribPointer(preview.aNor, 3, gl.FLOAT, false, 0, 0);
+    }
+    gl.uniform3f(preview.uLight, 0.3, 0.6, 1.0);
+    gl.uniform3f(preview.uBase, 0.75, 0.85, 1.0);
+    gl.uniform1f(preview.uAlpha, previewMeshSettings.alpha);
+    gl.drawArrays(gl.TRIANGLES, 0, preview.countsTris);
+    gl.useProgram(preview.prog);
+  }
 }
 
   // Draw path
@@ -2116,9 +2260,12 @@ function updatePreview(){
 if(previewMeshSettings.viewer === "mv"){
   const mv = document.getElementById("mvPreview");
   if(mv && customElements.get("model-viewer")){
-    const mesh = state.outputs.mesh || null;
+    const mesh = state.outputs.preview?.mesh || state.outputs.mesh || null;
     try{
-      if(mesh && mesh.tris && mesh.tris.length>=9){
+      if(mesh && mesh.glbUrl){
+        mv.style.display = "block";
+        mv.src = mesh.glbUrl;
+      }else if(mesh && meshToTris(mesh)?.length >= 9){
         mv.style.display = "block";
         const url = meshToObjectURL_GLb(mesh);
         mv.src = url;
@@ -2137,10 +2284,25 @@ if(previewMeshSettings.viewer === "mv"){
   if(prof.bedW !== preview.bed.w || prof.bedD !== preview.bed.d){
     buildBedBuffers(prof.bedW, prof.bedD);
   }
-  setPreviewMesh(state.outputs.mesh||null, prof);
-  const __pAll = (state.outputs.path||[]);
-  updatePreviewControlsFromPath(__pAll);
-  setPreviewPath(filterPreviewPath(__pAll));
+  const previewPayload = state.outputs.preview || null;
+  const previewMesh = previewPayload?.mesh || state.outputs.mesh || null;
+  const previewToolpath = previewPayload?.toolpath || state.outputs.toolpath || null;
+  const overlays = previewPayload?.overlays || (previewToolpath ? ["featureType"] : []);
+
+  updatePreviewOverlayOptions(overlays);
+  updatePreviewLegend(previewPayload?.legend || null);
+  setPreviewMesh(previewMesh, prof);
+
+  let pathForPreview = (state.outputs.path||[]);
+  let warning = "";
+  if(previewToolpath){
+    const converted = toolpathToPath(previewToolpath, {maxMoves:200000});
+    pathForPreview = converted.path;
+    warning = converted.warning;
+  }
+  updatePreviewWarning(previewPayload?.warning || warning);
+  updatePreviewControlsFromPath(pathForPreview);
+  setPreviewPath(filterPreviewPath(pathForPreview));
 }
 
 let previewDirty = true;
