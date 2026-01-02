@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 const { parseNumberList, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
@@ -42,3 +43,5 @@ simpleNode({
     return { jobs };
   }
 });
+
+})();

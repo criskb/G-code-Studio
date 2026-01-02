@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 const { simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
@@ -24,3 +25,5 @@ simpleNode({
   ],
   evaluate: ()=>({ infillToolpath: [] })
 });
+
+})();

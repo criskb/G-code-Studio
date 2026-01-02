@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 const { clamp, numOr, getMeshInput, getBounds, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
@@ -50,3 +51,5 @@ simpleNode({
     };
   }
 });
+
+})();

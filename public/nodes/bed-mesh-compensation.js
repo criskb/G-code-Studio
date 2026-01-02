@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 const { getPathInput, simpleReport, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
@@ -27,3 +28,5 @@ simpleNode({
     return { toolpath, report };
   }
 });
+
+})();

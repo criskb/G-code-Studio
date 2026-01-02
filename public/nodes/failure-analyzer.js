@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 const { getPathInput, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
@@ -35,3 +36,5 @@ simpleNode({
     return { warnings, toolpath };
   }
 });
+
+})();
