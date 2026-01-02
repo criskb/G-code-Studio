@@ -638,9 +638,10 @@ body.light .toggle .knob{
 }
 .previewHost{ position:relative; }
 .previewControls{
-  position:absolute; left:10px; top:10px;
-  display:flex; flex-direction:column; gap:8px;
-  padding:8px 10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px 12px;
   border:1px solid rgba(255,255,255,0.10);
   border-radius:14px;
   background: color-mix(in srgb, var(--panel) 92%, transparent);
@@ -649,7 +650,6 @@ body.light .toggle .knob{
   backdrop-filter: blur(10px);
   user-select:none;
   min-width: 240px;
-  z-index: 5;
 }
 .pcRow{ display:flex; align-items:center; gap:8px; }
 .pcLabel{ font-size:11px; opacity:.75; }
@@ -807,16 +807,51 @@ body.light .toggle .knob{
   font-size: 12px;
 }
 
-/* Dock the former right panel into a node */
+/* Dock the former right panel into nodes */
 .panel.right{ display:none !important; }
 
-/* Studio View node docking */
-.studioDock{ height:100%; display:flex; flex-direction:column; gap:10px; }
-.studioDock .head{ margin:0 0 10px 0; }
-.studioDock .body{ height:100%; display:flex; flex-direction:column; gap:10px; }
-.studioDock .previewHost{ flex: 0 0 auto; height: 420px; min-height: 260px; }
-.studioDock #gcodePre{ flex: 1 1 auto; min-height: 180px; max-height: none; overflow:auto; }
-.studioDock .divider{ margin: 6px 0 2px 0; opacity:.9; }
+/* Preview + G-code docking */
+.previewDock,
+.gcodeDock,
+.studioDock{
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.previewPanel,
+.gcodePanel{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  height:100%;
+}
+.previewDock .previewHost,
+.studioDock .previewHost{
+  flex: 1 1 auto;
+  min-height: 420px;
+  height: auto;
+}
+.previewDock .previewDockControls,
+.studioDock .previewDockControls{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.gcodeDock #gcodePre,
+.studioDock #gcodePre{
+  flex: 1 1 auto;
+  min-height: 200px;
+  max-height: none;
+  overflow:auto;
+}
+.gcodeActions,
+.previewActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.gcodeActions{ align-items:center; }
 
 /* Node Picker (Comfy-style): Space opens searchable list */
 .npOverlay{
