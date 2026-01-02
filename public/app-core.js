@@ -196,15 +196,27 @@ function updatePreviewLayerLabel(){
   }
 }
 
+function normalizePreviewRole(role, travel){
+  if(travel) return "travel";
+  const r = String(role || "").toLowerCase();
+  if(!r) return "";
+  if(r === "inner_wall") return "wall_inner";
+  if(r === "outer_wall") return "wall_outer";
+  if(r === "wall") return "walls";
+  if(r === "perimeter") return "walls";
+  if(r === "perimeters") return "walls";
+  return r;
+}
+
 function filterPreviewPath(path){
   if(!path || !path.length) return path || [];
   let out = path;
 
-  // Role filter (supports grouped walls)
+  // Role filter (supports grouped walls + travel)
   const want = previewFilter.role;
   if(want && want !== "all"){
     out = out.filter(p=>{
-      const r = (p.meta?.role || p.role || "").toString();
+      const r = normalizePreviewRole(p.meta?.role || p.role || "", !!p.travel);
       if(want==="walls") return (r==="walls" || r==="wall_outer" || r==="wall_inner");
       return r === want;
     });
