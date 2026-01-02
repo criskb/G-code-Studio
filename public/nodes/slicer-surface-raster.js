@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Surface Raster'] = {
   tag:"slicer",
   desc:"Non-planar surface raster settings.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"surfaceRaster", type:"slicer_settings"}],
   initData: ()=>({
     spacing:1.0,
     step:0.6,
@@ -18,5 +18,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Surface Raster'] = {
     maxPts:0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_SURFACE_RASTER, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, surfaceRaster: settings };
+  }
 };

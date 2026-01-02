@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Cooling'] = {
   tag:"slicer",
   desc:"Cooling settings for planar slicing.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"cooling", type:"slicer_settings"}],
   initData: ()=>({
     fanFirstLayer:0,
     fanOtherLayers:100,
@@ -15,5 +15,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Cooling'] = {
     slowDownBelow:0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_COOLING, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, cooling: settings };
+  }
 };

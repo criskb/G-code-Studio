@@ -1,0 +1,245 @@
+{
+  "ui": {
+    "theme": "dark",
+    "autoRun": true,
+    "panX": 60,
+    "panY": 80,
+    "zoom": 1.0,
+    "selectedNodeId": "export1"
+  },
+  "params": [
+    {
+      "k": "pi",
+      "v": "3.141592653589793",
+      "locked": true
+    },
+    {
+      "k": "tau",
+      "v": "6.283185307179586",
+      "locked": true
+    },
+    {
+      "k": "A",
+      "v": "50"
+    },
+    {
+      "k": "B",
+      "v": "10"
+    },
+    {
+      "k": "C",
+      "v": "6"
+    }
+  ],
+  "orca": {
+    "printers": [],
+    "filaments": [],
+    "processes": [],
+    "files": {},
+    "lastImported": ""
+  },
+  "outputs": {
+    "gcode": "",
+    "path": [],
+    "mesh": null,
+    "stats": {
+      "points": 0,
+      "length": 0,
+      "e": 0,
+      "timeMin": 0
+    }
+  },
+  "nodes": {
+    "path1": {
+      "id": "path1",
+      "type": "Path",
+      "x": 80,
+      "y": 140,
+      "w": 360,
+      "h": 320,
+      "data": {
+        "mode": "equation",
+        "equation": {
+          "x": "A*cos(2*pi*t)",
+          "y": "A*sin(2*pi*t)",
+          "t0": 0,
+          "t1": 1,
+          "steps": 900,
+          "zMode": "layered",
+          "z": "0",
+          "layers": 80,
+          "layerHeight": 0.22,
+          "rotatePerLayerDeg": 4
+        },
+        "polar": {
+          "r": "A + B*sin(C*2*pi*t)",
+          "theta": "2*pi*t*C",
+          "t0": 0,
+          "t1": 1,
+          "steps": 900,
+          "zMode": "layered",
+          "z": "0",
+          "layers": 40,
+          "layerHeight": 0.2,
+          "rotatePerLayerDeg": 0
+        },
+        "spiral": {
+          "height": 120,
+          "layerHeight": 0.24,
+          "radius": 45,
+          "turns": 120,
+          "waveAmp": 6,
+          "waveFreq": 7,
+          "stepsPerTurn": 18
+        },
+        "scriptSteps": 900,
+        "scriptLayerHeight": 0.28,
+        "scriptCode": "// Return an array of points: {x,y,z, travel?:true, layer?:number, meta?:{layerHeight}}\n// Vars available: steps, layerHeight, p (params), base, Math, clamp, lerp, PI, TAU\nconst pts = [];\nfor(let i=0;i<steps;i++){\n  const t = i/(steps-1);\n  const r = 55;\n  const a = TAU*6*t;\n  const x = r*Math.cos(a);\n  const y = r*Math.sin(a);\n  const z = 40*t;\n  pts.push({x,y,z, meta:{layerHeight}});\n}\nreturn pts;"
+      }
+    },
+    "warp1": {
+      "id": "warp1",
+      "type": "Z Warp",
+      "x": 470,
+      "y": 160,
+      "w": 320,
+      "h": 260,
+      "data": {
+        "mode": "sine2d",
+        "amplitude": 1.0,
+        "wavelength": 28,
+        "phaseDeg": 0,
+        "axis": "xy",
+        "affectTravel": false,
+        "clampToBed": true,
+        "zMin": 0
+      }
+    },
+    "rules1": {
+      "id": "rules1",
+      "type": "Rules",
+      "x": 850,
+      "y": 180,
+      "w": 320,
+      "h": 290,
+      "data": {
+        "speedExpr": "printSpeed*(0.8 + 0.2*sin(2*pi*t))",
+        "flowExpr": "1",
+        "enableTemp": false,
+        "tempExpr": "nozzleTemp",
+        "enableFan": true,
+        "fanExpr": "min(255, 30 + 4*layer)",
+        "layerHeightHint": 0.22,
+        "injectEveryN": 2
+      }
+    },
+    "printer1": {
+      "id": "printer1",
+      "type": "Printer",
+      "x": 470,
+      "y": 560,
+      "w": 360,
+      "h": 320,
+      "data": {
+        "name": "Generic FDM",
+        "bedW": 220,
+        "bedD": 220,
+        "bedH": 250,
+        "origin": "center",
+        "offsetX": 0,
+        "offsetY": 0,
+        "travelZ": 5,
+        "nozzle": 0.4,
+        "lineWidth": 0.45,
+        "filamentDia": 1.75,
+        "extrusionMult": 1.0,
+        "tempNozzle": 210,
+        "tempBed": 60,
+        "speedPrint": 1800,
+        "speedTravel": 6000,
+        "startGcode": "M104 S210\nM140 S60\nG28\nG92 E0",
+        "endGcode": "M104 S0\nM140 S0\nG28 X0\nM84"
+      }
+    },
+    "export1": {
+      "id": "export1",
+      "type": "Export",
+      "x": 1180,
+      "y": 240,
+      "w": 340,
+      "h": 260,
+      "data": {
+        "addLayerComments": true,
+        "capPreviewChars": 200000,
+        "fileName": "workflow_nonplanar_wave"
+      }
+    }
+  },
+  "links": [
+    {
+      "id": "link1",
+      "from": {
+        "node": "path1",
+        "port": "path",
+        "type": "path"
+      },
+      "to": {
+        "node": "warp1",
+        "port": "in",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link2",
+      "from": {
+        "node": "warp1",
+        "port": "out",
+        "type": "path"
+      },
+      "to": {
+        "node": "export1",
+        "port": "path",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link3",
+      "from": {
+        "node": "warp1",
+        "port": "out",
+        "type": "path"
+      },
+      "to": {
+        "node": "rules1",
+        "port": "in",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link4",
+      "from": {
+        "node": "rules1",
+        "port": "rules",
+        "type": "rules"
+      },
+      "to": {
+        "node": "export1",
+        "port": "rules",
+        "type": "rules"
+      }
+    },
+    {
+      "id": "link5",
+      "from": {
+        "node": "printer1",
+        "port": "profile",
+        "type": "profile"
+      },
+      "to": {
+        "node": "export1",
+        "port": "profile",
+        "type": "profile"
+      }
+    }
+  ]
+}

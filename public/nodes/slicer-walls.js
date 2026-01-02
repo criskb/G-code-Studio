@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Walls'] = {
   tag:"slicer",
   desc:"Wall/shell configuration for planar slicing.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"walls", type:"slicer_settings"}],
   initData: ()=>({
     perimeters:2,
     spiralVase:false,
@@ -17,5 +17,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Walls'] = {
     wallOverlap:15
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_WALLS, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, walls: settings };
+  }
 };
