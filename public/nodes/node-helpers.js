@@ -50,8 +50,12 @@ export const {
 } = api;
 
 export const { NODE_DEFS } = window.GCODE_STUDIO;
+export const SCHEMA_EXPORT = api.SCHEMA_EXPORT;
 export const SCHEMA_IMPORT_MESH_V2 = api.SCHEMA_IMPORT_MESH_V2;
 export const SCHEMA_MESH_PRIMITIVE = api.SCHEMA_MESH_PRIMITIVE;
 export const SCHEMA_MESH_PRIMITIVE_V2 = api.SCHEMA_MESH_PRIMITIVE_V2;
+export const SCHEMA_NOTE = api.SCHEMA_NOTE;
+export const SCHEMA_PRINTER = api.SCHEMA_PRINTER;
+export const SCHEMA_RULES = api.SCHEMA_RULES;
 export const SCHEMA_SLICER_V2 = api.SCHEMA_SLICER_V2;
 export const studioDock = api.studioDock;
