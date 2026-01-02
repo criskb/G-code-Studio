@@ -591,6 +591,37 @@ function renderGraph(){
   requestAnimationFrame(()=>{ ensureAllNodesFit(); });
 }
 
+function hexToRgba(hex, alpha){
+  if(!hex) return null;
+  const raw = hex.replace("#", "").trim();
+  if(raw.length !== 6) return null;
+  const r = parseInt(raw.slice(0,2), 16);
+  const g = parseInt(raw.slice(2,4), 16);
+  const b = parseInt(raw.slice(4,6), 16);
+  if(!isFinite(r) || !isFinite(g) || !isFinite(b)) return null;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyNodeViewStyle(el, head, node){
+  const view = node.view || {};
+  el.style.background = "";
+  head.style.background = "";
+  head.style.borderBottomColor = "";
+  if(view.tint){
+    const strength = Math.max(0, Math.min(0.6, Number(view.tintStrength ?? 0.12)));
+    const bg = hexToRgba(view.tint, strength);
+    if(bg) el.style.background = bg;
+  }
+  if(view.header){
+    const headerStrength = Math.max(0, Math.min(0.8, Number(view.headerStrength ?? 0.18)));
+    const headBg = hexToRgba(view.header, headerStrength);
+    if(headBg){
+      head.style.background = headBg;
+      head.style.borderBottomColor = hexToRgba(view.header, Math.min(1, headerStrength + 0.2));
+    }
+  }
+}
+
 function renderNodeEl(node){
   const def = NODE_DEFS[node.type];
   const el = document.createElement("div");
@@ -611,6 +642,17 @@ function renderNodeEl(node){
 
   const btns = document.createElement("div");
   btns.className="nodeBtns";
+
+  const bProps = document.createElement("button");
+  bProps.className="nodeBtn";
+  bProps.title="Properties";
+  bProps.textContent="⚙";
+  for(const ev of ["pointerdown","mousedown","click"]){
+    bProps.addEventListener(ev, (e)=> e.stopPropagation());
+  }
+  bProps.addEventListener("click", (e)=>{
+    openNodeProps(node.id);
+  });
 
   const bDup = document.createElement("button");
   bDup.className="nodeBtn";
@@ -642,6 +684,7 @@ if(UI_NODE_TYPES.has(node.type)){
   bDel.style.display = "none";
 }
 
+  btns.appendChild(bProps);
   btns.appendChild(bDup);
   btns.appendChild(bDel);
   head.appendChild(btns);
@@ -678,6 +721,8 @@ if(UI_NODE_TYPES.has(node.type)){
     if(e.button===2) return;
     selectNode(node.id);
   });
+
+  applyNodeViewStyle(el, head, node);
 
 
 const body = document.createElement("div");
@@ -2321,6 +2366,9 @@ document.getElementById("btnFitPreview").addEventListener("click", ()=> fitPrevi
 const demoDropdown = document.getElementById("demoDropdown");
 const btnDemo = document.getElementById("btnDemo");
 const demoMenu = document.getElementById("demoMenu");
+const nodePropsOverlay = document.getElementById("nodePropsOverlay");
+const nodePropsTitle = document.getElementById("nodePropsTitle");
+const nodePropsContent = document.getElementById("nodePropsContent");
 
 function populateDemoMenu(){
   demoMenu.innerHTML = "";
@@ -2350,6 +2398,148 @@ function populateDemoMenu(){
   }
 }
 
+function closeNodeProps(){
+  nodePropsOverlay?.classList?.remove("open");
+}
+
+function openNodeProps(nodeId){
+  const node = state.nodes[nodeId];
+  if(!node) return;
+  const def = NODE_DEFS[node.type];
+  if(nodePropsTitle) nodePropsTitle.textContent = `${def?.title || node.type} Properties`;
+  if(!node.view) node.view = {};
+  if(nodePropsContent){
+    nodePropsContent.innerHTML = "";
+    const view = node.view;
+
+    const makeRow = (labelText, input)=>{
+      const row = document.createElement("div");
+      row.className = "propsRow";
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      row.appendChild(label);
+      row.appendChild(input);
+      nodePropsContent.appendChild(row);
+      return row;
+    };
+
+    const tintToggle = document.createElement("input");
+    tintToggle.type = "checkbox";
+    tintToggle.checked = !!view.tint;
+    tintToggle.addEventListener("change", ()=>{
+      if(tintToggle.checked){
+        view.tint = view.tint || "#20262c";
+      }else{
+        delete view.tint;
+      }
+      tintColor.disabled = !view.tint;
+      tintStrength.disabled = !view.tint;
+      renderGraph();
+      saveState();
+    });
+    makeRow("Tinted background", tintToggle);
+
+    const tintColor = document.createElement("input");
+    tintColor.type = "color";
+    tintColor.value = view.tint || "#20262c";
+    tintColor.disabled = !view.tint;
+    tintColor.addEventListener("input", ()=>{
+      view.tint = tintColor.value;
+      renderGraph();
+      saveState();
+    });
+    makeRow("Tint color", tintColor);
+
+    const tintStrength = document.createElement("input");
+    tintStrength.type = "range";
+    tintStrength.min = "0";
+    tintStrength.max = "0.6";
+    tintStrength.step = "0.02";
+    tintStrength.value = String(view.tintStrength ?? 0.12);
+    tintStrength.disabled = !view.tint;
+    tintStrength.addEventListener("input", ()=>{
+      view.tintStrength = Number(tintStrength.value);
+      renderGraph();
+      saveState();
+    });
+    makeRow("Tint strength", tintStrength);
+
+    const headerToggle = document.createElement("input");
+    headerToggle.type = "checkbox";
+    headerToggle.checked = !!view.header;
+    headerToggle.addEventListener("change", ()=>{
+      if(headerToggle.checked){
+        view.header = view.header || "#22303a";
+      }else{
+        delete view.header;
+      }
+      headerColor.disabled = !view.header;
+      headerStrength.disabled = !view.header;
+      renderGraph();
+      saveState();
+    });
+    makeRow("Tint header", headerToggle);
+
+    const headerColor = document.createElement("input");
+    headerColor.type = "color";
+    headerColor.value = view.header || "#22303a";
+    headerColor.disabled = !view.header;
+    headerColor.addEventListener("input", ()=>{
+      view.header = headerColor.value;
+      renderGraph();
+      saveState();
+    });
+    makeRow("Header color", headerColor);
+
+    const headerStrength = document.createElement("input");
+    headerStrength.type = "range";
+    headerStrength.min = "0";
+    headerStrength.max = "0.8";
+    headerStrength.step = "0.02";
+    headerStrength.value = String(view.headerStrength ?? 0.18);
+    headerStrength.disabled = !view.header;
+    headerStrength.addEventListener("input", ()=>{
+      view.headerStrength = Number(headerStrength.value);
+      renderGraph();
+      saveState();
+    });
+    makeRow("Header strength", headerStrength);
+
+    if(node.type === "Note"){
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.value = node.data?.title || "";
+      titleInput.addEventListener("input", ()=>{
+        node.data.title = titleInput.value;
+        rerenderNode(node.id);
+        saveState();
+      });
+      makeRow("Note title", titleInput);
+
+      const compactToggle = document.createElement("input");
+      compactToggle.type = "checkbox";
+      compactToggle.checked = !!node.data?.compact;
+      compactToggle.addEventListener("change", ()=>{
+        node.data.compact = compactToggle.checked;
+        rerenderNode(node.id);
+        saveState();
+      });
+      makeRow("Compact header", compactToggle);
+    }
+
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "btn";
+    resetBtn.textContent = "Reset view";
+    resetBtn.addEventListener("click", ()=>{
+      delete node.view;
+      renderGraph();
+      saveState();
+    });
+    nodePropsContent.appendChild(resetBtn);
+  }
+  nodePropsOverlay?.classList?.add("open");
+}
+
 function toggleDemoMenu(){
   demoMenu.classList.toggle("open");
 }
@@ -2364,6 +2554,9 @@ document.addEventListener("mousedown", (e)=>{
     demoMenu?.classList?.remove("open");
   }
 });
+nodePropsOverlay?.addEventListener("mousedown", (e)=>{
+  if(e.target === nodePropsOverlay) closeNodeProps();
+});
 
 /* ---------------------------
    Keyboard
@@ -2374,6 +2567,7 @@ window.addEventListener("keydown", (e)=>{
     try{ demoMenu?.classList?.remove("open"); }catch(_){}
     try{ closeNodePicker(); }catch(_){}
     try{ closeSettings(); }catch(_){}
+    try{ closeNodeProps(); }catch(_){}
     return;
   }
 

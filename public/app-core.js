@@ -1895,6 +1895,18 @@ async function unzipArrayBuffer(ab){
    - Supports: .orca_printer, .orca_filament, .zip (Orca config bundles), and raw .json.
 ---------------------------- */
 function ensureOrcaStore(){
+  if(!ensureOrcaStore.loaded){
+    ensureOrcaStore.loaded = true;
+    try{
+      const raw = localStorage.getItem("gcodeStudio_orcaProfiles_v1");
+      if(raw){
+        const obj = JSON.parse(raw);
+        if(obj && typeof obj === "object"){
+          state.orca = { printers:[], filaments:[], processes:[], files:{}, lastImported:"", ...obj };
+        }
+      }
+    }catch(_){}
+  }
   if(!state.orca) state.orca = { printers:[], filaments:[], processes:[], files:{}, lastImported:"" };
   if(!state.orca.files || typeof state.orca.files!=="object") state.orca.files = {};
   state.orca.printers  = Array.isArray(state.orca.printers)  ? state.orca.printers  : [];
@@ -1902,6 +1914,7 @@ function ensureOrcaStore(){
   state.orca.processes = Array.isArray(state.orca.processes) ? state.orca.processes : [];
   return state.orca;
 }
+ensureOrcaStore.loaded = false;
 
 function orcaFirst(list, id){
   if(!Array.isArray(list) || !list.length) return null;
@@ -1977,6 +1990,8 @@ async function importOrcaFilesFromInput(fileList){
   setStatus("Importing Orca presets…");
   try{
     for(const f of files) await importOrcaFile(f);
+    try{ localStorage.setItem("gcodeStudio_orcaProfiles_v1", JSON.stringify(orca)); }catch(_){}
+    try{ if(typeof saveState === "function") saveState(); }catch(_){}
     setStatus(`Imported Orca presets • printers:${orca.printers.length} filaments:${orca.filaments.length} processes:${orca.processes.length}`);
     toast("Orca presets imported");
   }catch(e){
