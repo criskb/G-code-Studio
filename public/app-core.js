@@ -152,12 +152,19 @@ const chipE = document.getElementById("chipE");
 const chipT = document.getElementById("chipT");
 const glCanvas = document.getElementById("glPreview");
 const prevRoleEl = document.getElementById("prevRole");
+const prevOverlayEl = document.getElementById("prevOverlay");
 const prevLayerModeEl = document.getElementById("prevLayerMode");
 const prevLayerEl = document.getElementById("prevLayer");
 const prevLayerValEl = document.getElementById("prevLayerVal");
+const previewLegendEl = document.getElementById("previewLegend");
+const previewLegendTitleEl = document.getElementById("previewLegendTitle");
+const previewLegendRangeEl = document.getElementById("previewLegendRange");
+const previewLegendBarEl = document.getElementById("previewLegendBar");
+const previewWarnEl = document.getElementById("previewWarn");
 
 const previewFilter = {
   role: "all",
+  overlay: "featureType",
   layerMode: "all",
   layer: 0,
   maxLayer: 0,
@@ -253,6 +260,7 @@ function bindPreviewControls(){
   if(!prevRoleEl || !prevLayerModeEl || !prevLayerEl) return;
 
   prevRoleEl.value = previewFilter.role;
+  if(prevOverlayEl) prevOverlayEl.value = previewFilter.overlay;
   prevLayerModeEl.value = previewFilter.layerMode;
   prevLayerEl.value = String(previewFilter.layer);
 
@@ -260,6 +268,12 @@ function bindPreviewControls(){
     previewFilter.role = prevRoleEl.value;
     schedulePreviewUpdate();
   });
+  if(prevOverlayEl){
+    prevOverlayEl.addEventListener("change", ()=>{
+      previewFilter.overlay = prevOverlayEl.value;
+      schedulePreviewUpdate();
+    });
+  }
   prevLayerModeEl.addEventListener("change", ()=>{
     previewFilter.layerMode = prevLayerModeEl.value;
     updatePreviewLayerLabel();
@@ -274,6 +288,47 @@ function bindPreviewControls(){
   bindPreviewControls.bound = true;
 }
 bindPreviewControls.bound = false;
+
+function updatePreviewOverlayOptions(overlays){
+  if(!prevOverlayEl) return;
+  const list = (overlays && overlays.length) ? overlays : ["featureType"];
+  prevOverlayEl.innerHTML = "";
+  for(const item of list){
+    const opt = document.createElement("option");
+    opt.value = item;
+    opt.textContent = item === "featureType" ? "Feature type" : item;
+    prevOverlayEl.appendChild(opt);
+  }
+  if(!list.includes(previewFilter.overlay)){
+    previewFilter.overlay = list.includes("featureType") ? "featureType" : list[0];
+  }
+  prevOverlayEl.value = previewFilter.overlay;
+}
+
+function updatePreviewLegend(legend){
+  if(!previewLegendEl) return;
+  if(!legend){
+    previewLegendEl.style.display = "none";
+    return;
+  }
+  previewLegendEl.style.display = "flex";
+  if(previewLegendTitleEl) previewLegendTitleEl.textContent = `${legend.field || ""} ${legend.unit ? `(${legend.unit})` : ""}`.trim();
+  if(previewLegendRangeEl) previewLegendRangeEl.textContent = `${fmt(legend.min, 2)} → ${fmt(legend.max, 2)}`;
+  if(previewLegendBarEl && legend.colors){
+    previewLegendBarEl.style.background = `linear-gradient(90deg, ${legend.colors.join(", ")})`;
+  }
+}
+
+function updatePreviewWarning(msg){
+  if(!previewWarnEl) return;
+  if(msg){
+    previewWarnEl.textContent = msg;
+    previewWarnEl.style.display = "block";
+  }else{
+    previewWarnEl.textContent = "";
+    previewWarnEl.style.display = "none";
+  }
+}
 
 const prevMeshRenderEl = document.getElementById("prevMeshRender");
 const prevMeshAlphaEl = document.getElementById("prevMeshAlpha");
@@ -296,8 +351,11 @@ function setViewerMode(mode){
     fallback2d.style.display = "none";
     // update mesh source if available
     try{
-      const mesh = state.outputs.mesh || null;
-      if(mesh && mesh.tris && mesh.tris.length>=9){
+      const mesh = state.outputs.preview?.mesh || state.outputs.mesh || null;
+      if(mesh?.glbUrl){
+        mv.src = mesh.glbUrl;
+        mv.setAttribute("camera-controls", "");
+      }else if(mesh && meshToTris(mesh)?.length>=9){
         const url = meshToObjectURL_GLb(mesh);
         mv.src = url;
         mv.setAttribute("camera-controls", "");
@@ -380,7 +438,7 @@ function defaultState(){
     nodes: {},
     links: [],
     orca: { printers:[], filaments:[], processes:[], files:{}, lastImported:"" },
-    outputs: { gcode:"", path:[], mesh:null, stats:{points:0,length:0,e:0,timeMin:0} }
+    outputs: { gcode:"", path:[], mesh:null, toolpath:null, preview:null, previewWarning:"", stats:{points:0,length:0,e:0,timeMin:0} }
   };
 }
 let state = null;
@@ -1548,6 +1606,25 @@ function computeMeshBounds(tris){
   }
   return {min:{x:minX,y:minY,z:minZ}, max:{x:maxX,y:maxY,z:maxZ}, minx:minX, miny:minY, minz:minZ, maxx:maxX, maxy:maxY, maxz:maxZ};
 }
+
+function meshToTris(mesh){
+  if(!mesh) return null;
+  if(mesh.tris && mesh.tris.length) return mesh.tris;
+  const positions = mesh.positions || null;
+  const indices = mesh.indices || null;
+  if(positions && indices && indices.length){
+    const tris = new Float32Array(indices.length * 3);
+    for(let i=0;i<indices.length;i++){
+      const idx = indices[i] * 3;
+      tris[i*3+0] = positions[idx] ?? 0;
+      tris[i*3+1] = positions[idx+1] ?? 0;
+      tris[i*3+2] = positions[idx+2] ?? 0;
+    }
+    return tris;
+  }
+  if(positions && positions.length % 3 === 0) return new Float32Array(positions);
+  return null;
+}
 function buildFromImage(node, previewCanvas, drawPreviewCb){
   const d=node.data;
   node.runtime = node.runtime || {};
@@ -1740,7 +1817,7 @@ function meshToObjectURL_GLb(mesh){
   try{
     if(preview.mvUrl){ try{ URL.revokeObjectURL(preview.mvUrl); }catch(_){ } preview.mvUrl=""; }
   }catch(_){}
-  const tris = mesh.tris;
+  const tris = meshToTris(mesh) || new Float32Array(0);
   const triCount = Math.floor(tris.length/9);
   const maxTris = 60000;
   const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;

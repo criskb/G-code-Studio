@@ -124,6 +124,10 @@
                   <option value="top">Top</option>
                   <option value="travel">Travel</option>
                 </select>
+                <div class="pcLabel" style="margin-left:8px">Overlay</div>
+                <select class="pcSel" id="prevOverlay">
+                  <option value="featureType">Feature type</option>
+                </select>
                 <div class="pcLabel" style="margin-left:8px">Layer</div>
                 <select class="pcSel" id="prevLayerMode">
                   <option value="all">All</option>
@@ -164,6 +168,12 @@
                 <span class="lg"><i data-role="wall_outer"></i>Outer</span>
                 <span class="lg"><i data-role="wall_inner"></i>Inner</span>
               </div>
+              <div class="pcLegend scalar" id="previewLegend" style="display:none">
+                <span class="lgTitle" id="previewLegendTitle">Field</span>
+                <div class="lgBar" id="previewLegendBar"></div>
+                <span class="lgRange" id="previewLegendRange">0 → 1</span>
+              </div>
+              <div class="pcWarn" id="previewWarn" style="display:none"></div>
             </div>
             <div class="previewActions">
               <button class="btn" id="btnFitPreview">Fit preview</button>
@@ -322,7 +332,11 @@
 <script src="/nodes/slicer.js"></script>
 <script src="/nodes/snake-wall.js"></script>
 <script src="/nodes/gcode-output.js"></script>
+<script src="/nodes/hd-slice-engine.js"></script>
 <script src="/nodes/preview.js"></script>
+<script src="/nodes/motion-planner-sim.js"></script>
+<script src="/nodes/scalar-field-visualizer.js"></script>
+<script src="/nodes/strand-mesher.js"></script>
 <script src="/nodes/studio-view.js"></script>
 <script src="/nodes/svg-import.js"></script>
 <script src="/nodes/transform.js"></script>

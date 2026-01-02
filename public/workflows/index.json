@@ -1,5 +1,11 @@
 [
   {
+    "id": "hd-slice-visualization",
+    "name": "HD Slice + Visualization",
+    "file": "hd-slice-visualization.json",
+    "note": "Mesh Primitive → HD Slice Engine → Motion Planner → Scalar Field → Strand Mesher.\n\nTry: switch overlay to speed/flow and toggle mesh render mode."
+  },
+  {
     "id": "planar-slice-cube",
     "name": "Planar Slice \u2014 Cube",
     "file": "planar-slice-cube.json",
