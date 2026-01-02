@@ -3072,6 +3072,190 @@ const lastLayer = layers - 1;
   return out;
 }
 
+const SCHEMA_SLICER_V2 = [
+  { kind:"group", title:"Input & Mode", rows:[
+    { items:[
+      {key:"bedAlign", label:"Bed align mesh", ui:"toggle", default:true},
+      {key:"mode", label:"Mode", ui:"select", options:[
+        ["planar","Planar (layers + shells + infill + top/bottom)"],
+        ["surface","Surface raster (non-planar)"]
+      ], default:"planar"},
+    ]},
+    { items:[
+      {key:"originMode", label:"Origin", ui:"select", options:[
+        ["from_printer","Use Printer origin"],
+        ["center","Center on bed"],
+        ["lowerleft","Lower-left on bed"]
+      ], default:"from_printer"},
+      {key:"scale", label:"Scale", ui:"number", min:0.01, max:100, step:0.01, default:1},
+    ]},
+    { items:[
+      {key:"rotZ", label:"Rotate Z°", ui:"number", min:-180, max:180, step:1, default:0},
+      {key:"zOffset", label:"Z offset", ui:"number", min:-50, max:50, step:0.01, default:0},
+    ]},
+  ], note:"<span class='hint'>This is a lightweight slicer inspired by Orca-style controls. Many settings affect output now (shells/infill/top/bottom/speeds/flows/skirt/brim). Some advanced items are UI-ready but not fully simulated yet.</span>" },
+
+  /* ---------------- Planar ---------------- */
+  { kind:"group", title:"Quality", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"layerHeight", label:"Layer height", ui:"number", min:0.05, max:1.2, step:0.01, default:0.2},
+      {key:"firstLayerHeight", label:"First layer height", ui:"number", min:0.05, max:1.2, step:0.01, default:0.24},
+    ]},
+    { items:[
+      {key:"lineWidth", label:"Line width", ui:"number", min:0.2, max:1.2, step:0.01, default:0.45},
+      {key:"firstLayerLineWidth", label:"First layer line width", ui:"number", min:0.2, max:1.6, step:0.01, default:0.50},
+    ]},
+    { items:[
+      {key:"elephantFootComp", label:"Elephant foot comp", ui:"number", min:0, max:1.0, step:0.01, default:0.0},
+      {key:"detectThinWalls", label:"Detect thin walls (UI)", ui:"toggle", default:false},
+    ]},
+  ]},
+
+  { kind:"group", title:"Shells (Walls)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"perimeters", label:"Perimeters", ui:"number", min:0, max:12, step:1, default:2},
+      {key:"spiralVase", label:"Spiral vase (UI)", ui:"toggle", default:false},
+    ]},
+    { items:[
+      {key:"seamMode", label:"Seam (UI)", ui:"select", options:[
+        ["nearest","Nearest"],["rear","Rear"],["random","Random"],["aligned","Aligned (UI)"]
+      ], default:"nearest"},
+      {key:"wallOrdering", label:"Wall ordering (UI)", ui:"select", options:[
+        ["inner>outer","Inner → Outer"],["outer>inner","Outer → Inner (UI)"]
+      ], default:"inner>outer"},
+    ]},
+    { items:[
+      {key:"gapFill", label:"Gap fill (UI)", ui:"toggle", default:false},
+      {key:"wallOverlap", label:"Infill overlap % (UI)", ui:"number", min:0, max:50, step:1, default:15},
+    ]},
+  ]},
+
+  { kind:"group", title:"Infill", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"infillPct", label:"Infill %", ui:"number", min:0, max:100, step:1, default:15},
+      {key:"infillPattern", label:"Pattern", ui:"select", options:[
+        ["lines","Lines"],["zigzag","Zigzag"],["rectilinear","Rectilinear"],
+        ["cross","Cross"],["grid","Grid"],
+        ["triangles","Triangles"],["octagrid","Octagrid"],
+        ["honeycomb","Honeycomb (approx)"],
+        ["waves","Waves"],["gyroid2d","Gyroid-like (2D)"],
+        ["cubic","Cubic (alt)"],
+        ["concentric","Concentric"]
+      ], default:"grid"},
+    ]},
+    { items:[
+      {key:"infillAngle", label:"Angle°", ui:"number", min:0, max:180, step:1, default:45},
+      {key:"serpentine", label:"Serpentine", ui:"toggle", default:true},
+    ]},
+    { items:[
+      {key:"brickLayer", label:"Brick-layer (phase shift)", ui:"toggle", default:false},
+      {key:"infillLineWidth", label:"Infill line width (UI)", ui:"number", min:0.2, max:2.0, step:0.01, default:0},
+    ]},
+  ]},
+
+  { kind:"group", title:"Top & Bottom (Skins)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"topLayers", label:"Top layers", ui:"number", min:0, max:60, step:1, default:4},
+      {key:"bottomLayers", label:"Bottom layers", ui:"number", min:0, max:60, step:1, default:4},
+    ]},
+    { items:[
+      {key:"solidPattern", label:"Skin pattern", ui:"select", options:[
+        ["","(same as infill)"],["lines","Lines"],["zigzag","Zigzag"],["grid","Grid"],["concentric","Concentric"],
+        ["waves","Waves"],["gyroid2d","Gyroid-like (2D)"]
+      ], default:""},
+      {key:"ironing", label:"Ironing (UI)", ui:"toggle", default:false},
+    ]},
+    { items:[
+      {key:"skinOverlap", label:"Skin overlap % (UI)", ui:"number", min:0, max:50, step:1, default:15},
+      {key:"monotonic", label:"Monotonic (UI)", ui:"toggle", default:false},
+    ]},
+  ]},
+
+  { kind:"group", title:"Skirt / Brim", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"skirtLines", label:"Skirt lines", ui:"number", min:0, max:20, step:1, default:0},
+      {key:"skirtDistance", label:"Skirt distance", ui:"number", min:0, max:50, step:0.5, default:6},
+    ]},
+    { items:[
+      {key:"brimWidth", label:"Brim width", ui:"number", min:0, max:50, step:0.5, default:0},
+      {key:"brimLines", label:"Brim lines (UI)", ui:"number", min:0, max:50, step:1, default:0},
+    ]},
+  ], note:"Skirt/Brim are generated as simple offset rings on the first layer (approximation)." },
+
+  { kind:"group", title:"Speeds & Flow", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"firstLayerSpeed", label:"First layer speed", ui:"number", min:60, max:12000, step:10, default:900},
+      {key:"travelSpeed", label:"Travel speed", ui:"number", min:300, max:30000, step:10, default:6000},
+    ]},
+    { items:[
+      {key:"wallSpeed", label:"Wall speed", ui:"number", min:60, max:30000, step:10, default:1800},
+      {key:"infillSpeed", label:"Infill speed", ui:"number", min:60, max:30000, step:10, default:2400},
+    ]},
+    { items:[
+      {key:"topSpeed", label:"Top speed", ui:"number", min:60, max:30000, step:10, default:1500},
+      {key:"bottomSpeed", label:"Bottom speed", ui:"number", min:60, max:30000, step:10, default:1200},
+    ]},
+    { items:[
+      {key:"wallFlow", label:"Wall flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+      {key:"infillFlow", label:"Infill flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+    ]},
+    { items:[
+      {key:"topFlow", label:"Top flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+      {key:"bottomFlow", label:"Bottom flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+    ]},
+  ], note:"These map into G-code defaults by <b>role</b> when no Rules node overrides speed/flow." },
+
+  { kind:"group", title:"Retraction & Travel", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"retract", label:"Retract length", ui:"number", min:0, max:20, step:0.01, default:0.8},
+      {key:"retractSpeed", label:"Retract speed", ui:"number", min:60, max:30000, step:10, default:1800},
+    ]},
+    { items:[
+      {key:"retractMinTravel", label:"Min travel for retract", ui:"number", min:0, max:50, step:0.1, default:1.0},
+      {key:"zHop", label:"Z hop", ui:"number", min:0, max:10, step:0.01, default:0},
+    ]},
+    { items:[
+      {key:"wipe", label:"Wipe (UI)", ui:"toggle", default:false},
+      {key:"coast", label:"Coast (UI)", ui:"toggle", default:false},
+    ]},
+  ], note:"Retract/Z-hop are applied on travels in exported G-code (simple implementation)." },
+
+  { kind:"group", title:"Cooling (UI)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"fanFirstLayer", label:"Fan first layer %", ui:"number", min:0, max:100, step:1, default:0},
+      {key:"fanOtherLayers", label:"Fan other layers %", ui:"number", min:0, max:100, step:1, default:100},
+    ]},
+    { items:[
+      {key:"minLayerTime", label:"Min layer time (UI)", ui:"number", min:0, max:120, step:1, default:0},
+      {key:"slowDownBelow", label:"Slow down below (UI)", ui:"number", min:0, max:60, step:1, default:0},
+    ]},
+  ]},
+
+  { kind:"group", title:"Advanced limits", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"maxLayers", label:"Max layers (limit)", ui:"number", min:0, max:99999, step:1, default:0},
+      {key:"maxSegs", label:"Max segments/layer (limit)", ui:"number", min:0, max:9999999, step:100, default:0},
+    ]},
+  ]},
+
+  /* ---------------- Surface raster (non-planar) ---------------- */
+  { kind:"group", title:"Surface raster", when:"d.mode==='surface'", rows:[
+    { items:[
+      {key:"spacing", label:"Raster spacing", ui:"number", min:0.1, max:10, step:0.05, default:1.0},
+      {key:"step", label:"Sample step", ui:"number", min:0.05, max:5, step:0.05, default:0.6},
+    ]},
+    { items:[
+      {key:"angleDeg", label:"Angle°", ui:"number", min:-180, max:180, step:1, default:0},
+      {key:"margin", label:"Margin", ui:"number", min:0, max:50, step:0.1, default:0},
+    ]},
+    { items:[
+      {key:"surfaceSerp", label:"Serpentine raster", ui:"toggle", default:true},
+      {key:"cellSize", label:"Index cell (auto=0)", ui:"number", min:0, max:200, step:0.1, default:0},
+      {key:"maxPts", label:"Max points (limit)", ui:"number", min:0, max:2000000, step:1000, default:0},
+    ]},
+  ]},
+];
+
 /* ---------------------------
    Nodes are loaded from /nodes via the node manager API
 ---------------------------- */
