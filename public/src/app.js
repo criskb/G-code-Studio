@@ -3020,7 +3020,7 @@ const lastLayer = layers - 1;
   return out;
 }
 
-Object.assign(NODE_DEFS, {
+const NODE_DEFS = {
   "Path": {
     title: "Path", tag: "generator",
     desc: "Equation / Polar / Spiral. Produces a parametric path.",
@@ -3583,30 +3583,6 @@ if(mode === "surface"){
 return { mesh, path };
 }
 
-    for(let i=0;i<n;i++){
-      const pt = out[i];
-      if(!pt) continue;
-      const t = (n<=1)? 0 : i/(n-1);
-      const x = isFinite(pt.x)? pt.x : (isFinite(pt.X)? pt.X : 0);
-      const y = isFinite(pt.y)? pt.y : (isFinite(pt.Y)? pt.Y : 0);
-      const z = isFinite(pt.z)? pt.z : 0;
-      const layer = isFinite(pt.layer)? pt.layer : (isFinite(pt.meta?.layer)? pt.meta.layer : inferLayer({z}, ctx.base?.layerHeight||0.2));
-      const role0 = String(pt.role || pt.meta?.role || "");
-      const isTravel = !!pt.travel;
-      const pmap = {...ctx.pmap, role: role0};
-      if(isTravel && !d.applyToTravel) continue;
-
-      for(const c of compiled){
-        if(!c.fn) continue;
-        let ok=false;
-        try{ ok = !!c.fn(t,i,n,x,y,z,layer,pmap,ctx.base); }catch(e){ ok=false; }
-        if(!ok) continue;
-
-        const r=c.r;
-        if(r.role){
-          pt.role = r.role;
-          if(pt.meta) pt.meta.role = r.role;
-        }
 
     function zAt(x,y){
       if(d.kind==="dome"){
@@ -5763,7 +5739,7 @@ mount.appendChild(group);
     return { mesh, path, outMesh:mesh, outPath:path };
   }
 }
-});
+};
 
 /* ---------------------------
    Graph evaluation engine
@@ -9724,70 +9700,7 @@ function stopGraphGestures(el){
   }
 }
 
-Object.assign(nodeRegistry.api, {
-  annotatePathHints,
-  applyMeshTransform,
-  arrayBufferFromB64,
-  b64FromArrayBuffer,
-  bedAlignMesh,
-  buildFromImage,
-  buildGcodeWithRules,
-  buildMeshIndex,
-  centerMesh,
-  clamp,
-  compileExpr,
-  drawMeshPreview2D,
-  drawWireframe2D,
-  divider,
-  dividerTiny,
-  downloadText,
-  elInput,
-  elNumber,
-  elSelect,
-  elTextarea,
-  elToggle,
-  escapeHTML,
-  field,
-  fmt,
-  genEquation,
-  genFromSVG,
-  genPolar,
-  genSpiralVase,
-  grid2,
-  inferLayer,
-  markDirtyAuto,
-  meshRuntimeCache,
-  meshTopZ,
-  parseSTL,
-  pickLayerHeight,
-  refreshNodeContent,
-  renderSchema,
-  rerenderNode,
-  rad,
-  safeName,
-  saveState,
-  schedulePreviewUpdate,
-  sliceMeshPlanar,
-  stopGraphGestures,
-  studioDock,
-  surfaceRasterPath,
-  toast,
-  SCHEMA_EXPORT,
-  SCHEMA_IMPORT_MESH_V2,
-  SCHEMA_MESH_PRIMITIVE,
-  SCHEMA_MESH_PRIMITIVE_V2,
-  SCHEMA_NOTE,
-  SCHEMA_PRINTER,
-  SCHEMA_RULES,
-  SCHEMA_SLICER_V2
-});
-
-async function startApp(){
-  await loadNodes();
-  boot();
-}
-
-startApp();
+boot();
 
 /* Redraw links on resize, and resize preview */
 window.addEventListener("resize", ()=>{
