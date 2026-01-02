@@ -7,11 +7,14 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Limits'] = {
   tag:"slicer",
   desc:"Advanced safety limits for planar slicing.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"limits", type:"slicer_settings"}],
   initData: ()=>({
     maxLayers:0,
     maxSegs:0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_LIMITS, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, limits: settings };
+  }
 };
