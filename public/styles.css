@@ -1,8 +1,9 @@
-:root{
+    :root{
       --bg0:#0b0f14;
       --bg1:#0d141c;
       --panel: rgba(10, 14, 20, 0.86);
       --panel2: rgba(12, 18, 26, 0.86);
+      --overlay: rgba(0,0,0,0.55);
       --stroke: rgba(255,255,255,0.10);
       --stroke2: rgba(255,255,255,0.14);
       --text: rgba(255,255,255,0.92);
@@ -23,6 +24,7 @@
       --bg1:#eef2f7;
       --panel: rgba(255,255,255,0.86);
       --panel2: rgba(255,255,255,0.86);
+      --overlay: rgba(15,20,28,0.25);
       --stroke: rgba(20,30,40,0.12);
       --stroke2: rgba(20,30,40,0.16);
       --text: rgba(15,20,28,0.92);
@@ -879,7 +881,7 @@ body.light .toggle .knob{
   justify-content:center;
   padding: 70px 18px 18px 18px;
   z-index: 9999;
-  background: rgba(0,0,0,0.55);
+  background: var(--overlay);
   backdrop-filter: blur(6px);
 }
 .npOverlay.open{ display:flex; }
@@ -889,8 +891,8 @@ body.light .toggle .knob{
   border: 1px solid var(--stroke);
   border-radius: 18px;
   overflow:hidden;
-  background: linear-gradient(180deg, rgba(0,0,0,0.75), rgba(0,0,0,0.62));
-  box-shadow: 0 20px 70px rgba(0,0,0,0.5);
+  background: var(--panel2);
+  box-shadow: var(--shadow);
 }
 
 /* Node Properties Overlay */
@@ -901,7 +903,7 @@ body.light .toggle .knob{
   justify-content:center;
   padding: 70px 18px 18px 18px;
   z-index: 9999;
-  background: rgba(0,0,0,0.55);
+  background: var(--overlay);
   backdrop-filter: blur(6px);
 }
 .propsOverlay.open{ display:flex; }
@@ -911,14 +913,14 @@ body.light .toggle .knob{
   border: 1px solid var(--stroke);
   border-radius: 18px;
   overflow:hidden;
-  background: linear-gradient(180deg, rgba(0,0,0,0.75), rgba(0,0,0,0.62));
-  box-shadow: 0 20px 70px rgba(0,0,0,0.5);
+  background: var(--panel2);
+  box-shadow: var(--shadow);
   display:flex;
   flex-direction:column;
 }
 .propsTop{
   padding: 12px 14px 10px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--stroke);
   display:flex;
   gap:10px;
   align-items:center;
@@ -952,9 +954,42 @@ body.light .toggle .knob{
   flex:1;
   min-width: 160px;
 }
+.paramOverlay{
+  position:fixed; inset:0;
+  display:none;
+  align-items:flex-start;
+  justify-content:center;
+  padding: 70px 18px 18px 18px;
+  z-index: 9999;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+}
+.paramOverlay.open{ display:flex; }
+.paramPanel{
+  width: min(520px, 94vw);
+  max-height: min(70vh, 620px);
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  overflow:hidden;
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+  display:flex;
+  flex-direction:column;
+}
+.paramTop{
+  padding: 12px 14px 10px 14px;
+  border-bottom: 1px solid var(--stroke);
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.paramBody{
+  padding: 12px 14px 16px 14px;
+  overflow:auto;
+}
 .npTop{
   padding: 12px 12px 10px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--stroke);
   display:flex; gap:10px; align-items:center;
 }
 .npSearch{
@@ -962,7 +997,7 @@ body.light .toggle .knob{
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--stroke);
-  background: rgba(0,0,0,0.35);
+  background: var(--panel);
   color: var(--text);
   outline:none;
 }
@@ -981,7 +1016,7 @@ body.light .toggle .knob{
 }
 .npSection{
   margin: 10px 6px 2px 6px;
-  color: rgba(255,255,255,0.55);
+  color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -993,9 +1028,23 @@ body.light .toggle .knob{
   gap:12px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.09);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.04);
   cursor:pointer;
+}
+[data-theme="light"] .npItem{
+  background: rgba(0,0,0,0.03);
+}
+.shortcutRow{
+  cursor:default;
+}
+.shortcutBtn{
+  min-width: 140px;
+  justify-content:center;
+}
+.shortcutBtn.capture{
+  border-color: var(--accent2);
+  color: var(--accent2);
 }
 .npItem:hover{ border-color: rgba(90,255,170,0.35); transform: translateY(-1px); }
 .npItem.sel{
@@ -1020,10 +1069,13 @@ body.light .toggle .knob{
 .npBadge{
   padding: 4px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.75);
+  border: 1px solid var(--stroke2);
+  color: var(--muted);
   font-size: 11px;
-  background: rgba(0,0,0,0.20);
+  background: rgba(0,0,0,0.12);
+}
+[data-theme="light"] .npBadge{
+  background: rgba(0,0,0,0.05);
 }
 
 

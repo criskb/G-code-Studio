@@ -29,6 +29,7 @@
       <button class="btn" id="btnFit">Fit view</button>
       <button class="btn" id="btnCenter">Center graph</button>
       <button class="btn" id="btnAddNode" title="Add node (Space)">Add node</button>
+      <button class="btn" id="btnParams" title="Edit global parameters">Params</button>
       <button class="btn" id="btnAuto">Auto: ON</button>
       <button class="btn primary" id="btnRun">Run graph</button>
       <button class="btn primary" id="btnDownload">Download .gcode</button>
@@ -269,6 +270,10 @@
       <div class="hint">
         Tip: Press <span class="kbd">Space</span> to add nodes, <span class="kbd">Enter</span> to place, <span class="kbd">Esc</span> to cancel.
       </div>
+
+      <div class="divider"></div>
+      <div class="npSection">Keyboard Shortcuts</div>
+      <div id="shortcutList"></div>
     </div>
   </div>
 </div>
@@ -281,6 +286,23 @@
       <div class="npHint" style="margin-left:auto;"><span class="kbd">Esc</span> to close</div>
     </div>
     <div class="propsBody" id="nodePropsContent"></div>
+  </div>
+</div>
+
+<!-- Params Overlay -->
+<div class="paramOverlay" id="paramOverlay" aria-hidden="true">
+  <div class="paramPanel" role="dialog" aria-modal="true" aria-label="Global Parameters">
+    <div class="paramTop">
+      <div style="font-weight:700; letter-spacing:.02em;">Global Parameters</div>
+      <div class="npHint" style="margin-left:auto;"><span class="kbd">Esc</span> to close</div>
+    </div>
+    <div class="paramBody">
+      <div class="hint" style="margin-bottom:10px">
+        <div style="margin-bottom:6px"><b style="color:var(--text)">Use in expressions</b></div>
+        <div>Params like <code>A</code>, <code>B</code>, <code>C</code> are available in node formulas.</div>
+      </div>
+      <div id="paramEditorOverlay"></div>
+    </div>
   </div>
 </div>
 

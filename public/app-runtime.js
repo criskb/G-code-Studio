@@ -32,6 +32,7 @@ function collectPreviewOutputs(){
   let previewToolpath = null;
   let previewMesh = null;
   let previewFallback = null;
+  const hasExport = Object.values(state.nodes).some(n=>n.type==="Export");
 
   for(const n of Object.values(state.nodes)){
     const def = NODE_DEFS[n.type];
@@ -42,7 +43,7 @@ function collectPreviewOutputs(){
       const val = out[o.name];
       if(!val) continue;
       if(o.type === "mesh") mesh = val;
-      if(o.type === "path" && Array.isArray(val)) path = val;
+      if(!hasExport && o.type === "path" && Array.isArray(val)) path = val;
       if(o.type === "toolpath") toolpath = val;
       if(o.type === "preview") previewFallback = val;
     }
@@ -163,6 +164,7 @@ function evaluateGraph(){
 const nodeListEl = document.getElementById("nodeList");
 const nodeSearchEl = document.getElementById("nodeSearch");
 const btnAddQuick = document.getElementById("btnAddQuick");
+const btnParams = document.getElementById("btnParams");
 
 // Node Picker (Space): searchable modal list
 const npOverlay = document.getElementById("npOverlay");
@@ -170,12 +172,25 @@ const npOverlay = document.getElementById("npOverlay");
 // App Settings (persisted)
 const appEl = document.querySelector(".app");
 const SETTINGS_KEY = "gcodeStudio_appSettings_v1";
+const USER_CONFIG_ENDPOINT = "/api/user-config";
+const SHORTCUT_DEFAULTS = {
+  openPicker: "Space",
+  openPickerAlt: "Ctrl+KeyK",
+  runGraph: "KeyG",
+  deleteNode: "Delete",
+  deleteNodeAlt: "Backspace",
+  openSettings: "KeyS",
+  openParams: "KeyP",
+  fitView: "KeyF",
+  centerView: "KeyC"
+};
 let appSettings = {
   showLib: false,
   spacePicker: true,
   spacePickerWhileTyping: false,
   pickerDelayMs: 140,
-  spawnAtCursor: true
+  spawnAtCursor: true,
+  shortcuts: { ...SHORTCUT_DEFAULTS }
 };
 
 function loadAppSettings(){
@@ -184,15 +199,50 @@ function loadAppSettings(){
     if(raw){
       const obj = JSON.parse(raw);
       if(obj && typeof obj==="object"){
-        appSettings = {...appSettings, ...obj};
+        appSettings = {...appSettings, ...obj, shortcuts: {...SHORTCUT_DEFAULTS, ...(obj.shortcuts || {})}};
       }
     }
   }catch(_){}
   applyAppSettings();
 }
 
+function mergeUserConfig(cfg){
+  if(!cfg || typeof cfg !== "object") return;
+  if(cfg.appSettings && typeof cfg.appSettings === "object"){
+    const merged = { ...appSettings, ...cfg.appSettings };
+    merged.shortcuts = { ...SHORTCUT_DEFAULTS, ...(cfg.appSettings.shortcuts || {}), ...(appSettings.shortcuts || {}) };
+    appSettings = merged;
+  }
+}
+
+let saveUserConfigT = null;
+function saveUserConfigDebounced(){
+  clearTimeout(saveUserConfigT);
+  saveUserConfigT = setTimeout(async ()=>{
+    try{
+      await fetch(USER_CONFIG_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appSettings })
+      });
+    }catch(_){}
+  }, 250);
+}
+
+async function loadUserConfig(){
+  try{
+    const res = await fetch(USER_CONFIG_ENDPOINT, { cache: "no-store" });
+    if(!res.ok) return;
+    const cfg = await res.json();
+    mergeUserConfig(cfg);
+    applyAppSettings();
+    saveAppSettings();
+  }catch(_){}
+}
+
 function saveAppSettings(){
   try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); }catch(_){}
+  saveUserConfigDebounced();
 }
 
 function applyAppSettings(){
@@ -209,6 +259,20 @@ const setSpacePicker = document.getElementById("setSpacePicker");
 const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
 const setPickerDelay = document.getElementById("setPickerDelay");
 const setSpawnCursor = document.getElementById("setSpawnCursor");
+const shortcutList = document.getElementById("shortcutList");
+
+const SHORTCUT_DEFS = [
+  { key: "openPicker", label: "Open Node Picker", hint: "Space" },
+  { key: "openPickerAlt", label: "Open Node Picker (Alt)", hint: "Ctrl/Cmd+K" },
+  { key: "runGraph", label: "Run graph", hint: "G" },
+  { key: "deleteNode", label: "Delete selected node", hint: "Delete" },
+  { key: "deleteNodeAlt", label: "Delete selected node (Alt)", hint: "Backspace" },
+  { key: "openSettings", label: "Open settings", hint: "S" },
+  { key: "openParams", label: "Open params", hint: "P" },
+  { key: "fitView", label: "Fit view", hint: "F" },
+  { key: "centerView", label: "Center graph", hint: "C" }
+];
+let shortcutCapture = null;
 
 function syncSettingsUI(){
   if(!settingsOverlay) return;
@@ -217,6 +281,7 @@ function syncSettingsUI(){
   setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
   setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
   setSpawnCursor.checked = !!appSettings.spawnAtCursor;
+  renderShortcutList();
 }
 
 function openSettings(){
@@ -252,6 +317,55 @@ bindSetting(setSpacePicker, "spacePicker", v=>!!v);
 bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
 bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
 bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
+
+function shortcutToLabel(code){
+  if(!code) return "—";
+  return code.replace(/Key/,"").replace(/Digit/,"").replace(/\+/g, " + ");
+}
+
+function renderShortcutList(){
+  if(!shortcutList) return;
+  shortcutList.innerHTML = "";
+  for(const def of SHORTCUT_DEFS){
+    const item = document.createElement("div");
+    item.className = "npItem shortcutRow";
+
+    const meta = document.createElement("div");
+    meta.className = "npMeta";
+    const title = document.createElement("div");
+    title.className = "npTitle";
+    title.textContent = def.label;
+    const desc = document.createElement("div");
+    desc.className = "npDesc";
+    desc.textContent = `Default: ${def.hint}`;
+    meta.appendChild(title);
+    meta.appendChild(desc);
+
+    const btn = document.createElement("button");
+    btn.className = "btn shortcutBtn";
+    btn.textContent = shortcutToLabel(appSettings.shortcuts?.[def.key]);
+    btn.addEventListener("click", (e)=>{
+      e.preventDefault();
+      shortcutCapture = { key: def.key, button: btn };
+      btn.classList.add("capture");
+      btn.textContent = "Press key…";
+    });
+
+    item.appendChild(meta);
+    item.appendChild(btn);
+    shortcutList.appendChild(item);
+  }
+}
+
+function eventToShortcut(ev){
+  const parts = [];
+  if(ev.ctrlKey) parts.push("Ctrl");
+  if(ev.metaKey) parts.push("Meta");
+  if(ev.altKey) parts.push("Alt");
+  if(ev.shiftKey) parts.push("Shift");
+  parts.push(ev.code);
+  return parts.join("+");
+}
 
 function canUseSpacePicker(){
   if(!appSettings.spacePicker) return false;
@@ -538,8 +652,8 @@ function renderNodeLibrary(){
 }
 nodeSearchEl.addEventListener("input", renderNodeLibrary);
 btnAddQuick.addEventListener("click", ()=>{ openNodePicker(""); });
-function renderParamEditor(){
-  const wrap = document.getElementById("paramEditor");
+function renderParamEditorInto(wrap){
+  if(!wrap) return;
   wrap.innerHTML = "";
   const table = document.createElement("div");
   table.style.display="flex";
@@ -594,6 +708,11 @@ function renderParamEditor(){
     saveState(); markDirtyAuto();
   });
   wrap.appendChild(add);
+}
+
+function renderParamEditor(){
+  renderParamEditorInto(document.getElementById("paramEditor"));
+  renderParamEditorInto(document.getElementById("paramEditorOverlay"));
 }
 
 /* ---------------------------
@@ -2553,6 +2672,7 @@ const demoMenu = document.getElementById("demoMenu");
 const nodePropsOverlay = document.getElementById("nodePropsOverlay");
 const nodePropsTitle = document.getElementById("nodePropsTitle");
 const nodePropsContent = document.getElementById("nodePropsContent");
+const paramOverlay = document.getElementById("paramOverlay");
 
 function populateDemoMenu(){
   demoMenu.innerHTML = "";
@@ -2584,6 +2704,16 @@ function populateDemoMenu(){
 
 function closeNodeProps(){
   nodePropsOverlay?.classList?.remove("open");
+}
+
+function openParamsOverlay(){
+  renderParamEditor();
+  paramOverlay?.classList?.add("open");
+  paramOverlay?.setAttribute("aria-hidden","false");
+}
+function closeParamsOverlay(){
+  paramOverlay?.classList?.remove("open");
+  paramOverlay?.setAttribute("aria-hidden","true");
 }
 
 function openNodeProps(nodeId){
@@ -2741,27 +2871,61 @@ document.addEventListener("mousedown", (e)=>{
 nodePropsOverlay?.addEventListener("mousedown", (e)=>{
   if(e.target === nodePropsOverlay) closeNodeProps();
 });
+paramOverlay?.addEventListener("mousedown", (e)=>{
+  if(e.target === paramOverlay) closeParamsOverlay();
+});
+
+btnParams?.addEventListener("click", (e)=>{
+  e.preventDefault();
+  openParamsOverlay();
+});
 
 /* ---------------------------
    Keyboard
 ---------------------------- */
 window.addEventListener("keydown", (e)=>{
+  if(shortcutCapture){
+    e.preventDefault();
+    const key = shortcutCapture.key;
+    const btn = shortcutCapture.button;
+    if(e.key === "Escape"){
+      shortcutCapture = null;
+      if(btn){
+        btn.classList.remove("capture");
+        btn.textContent = shortcutToLabel(appSettings.shortcuts[key]);
+      }
+      return;
+    }
+    appSettings.shortcuts[key] = eventToShortcut(e);
+    shortcutCapture = null;
+    if(btn){
+      btn.classList.remove("capture");
+      btn.textContent = shortcutToLabel(appSettings.shortcuts[key]);
+    }
+    saveAppSettings();
+    return;
+  }
+
   // Close menus / overlays
   if(e.key==="Escape"){
     try{ demoMenu?.classList?.remove("open"); }catch(_){}
     try{ closeNodePicker(); }catch(_){}
     try{ closeSettings(); }catch(_){}
     try{ closeNodeProps(); }catch(_){}
+    try{ closeParamsOverlay(); }catch(_){}
     return;
   }
 
+  const shortcut = eventToShortcut(e);
+  const shortcuts = appSettings.shortcuts || SHORTCUT_DEFAULTS;
+
   // Comfy-style node picker
-  if((e.code==="Space" || e.key===" ") && canUseSpacePicker()){
+  if(shortcut === shortcuts.openPicker && canUseSpacePicker()){
     e.preventDefault();
     if(!nodePicker.open) openNodePicker("");
     return;
   }
-  if((e.ctrlKey || e.metaKey) && (e.key==="k" || e.key==="K")){
+  if(shortcut === shortcuts.openPickerAlt){
     if(canUseSpacePicker()){
       e.preventDefault();
       if(!nodePicker.open) openNodePicker("");
@@ -2769,15 +2933,28 @@ window.addEventListener("keydown", (e)=>{
   }
 
   // Graph shortcuts
-  if((e.key==="Delete" || e.key==="Backspace") && !isTyping()){
+  if((shortcut === shortcuts.deleteNode || shortcut === shortcuts.deleteNodeAlt) && !isTyping()){
     const id = state.ui.selectedNodeId;
     if(id){ deleteNode(id); saveState(); markDirtyAuto(); }
   }
-  if((e.key==="g"||e.key==="G") && !isTyping()){
+  if(shortcut === shortcuts.runGraph && !isTyping()){
     try{ evaluateGraph(); toast("Graph ran"); }catch(err){ toast(err.message||String(err)); }
   }
-  if((e.key==="f"||e.key==="F") && !isTyping()){
+  if(shortcut === shortcuts.openSettings && !isTyping()){
+    e.preventDefault();
+    openSettings();
+  }
+  if(shortcut === shortcuts.openParams && !isTyping()){
+    e.preventDefault();
+    openParamsOverlay();
+  }
+  if(shortcut === shortcuts.fitView && !isTyping()){
+    e.preventDefault();
     document.getElementById("btnFit").click();
+  }
+  if(shortcut === shortcuts.centerView && !isTyping()){
+    e.preventDefault();
+    document.getElementById("btnCenter").click();
   }
 });
 
@@ -2840,8 +3017,9 @@ function ensureUiNodes(){
   }catch(e){ console.warn(e); }
 }
 
-function boot(){
+async function boot(){
   try{ loadAppSettings(); }catch(e){ console.warn(e); }
+  try{ await loadUserConfig(); }catch(e){ console.warn(e); }
   try{ loadWorkflows(); }catch(e){ console.warn(e); toast(e.message||String(e)); }
 
   try{ state = loadState(); }catch(e){ console.warn(e); state = defaultState(); toast(e.message||String(e)); }
