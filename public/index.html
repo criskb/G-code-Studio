@@ -92,96 +92,93 @@
       </div>
     </div>
 
-    <!-- Right: Preview + Output -->
+    <!-- Right: Preview + Output (docked into nodes) -->
     <div class="panel right">
-      <div class="head">
-        <div class="h">
-          <div class="t">Preview & Output</div>
-          <div class="d">Interactive 3D toolpath preview + latest generated G-code.</div>
-        </div>
-        <button class="btn bad" id="btnClearOut">Clear</button>
-      </div>
-
       <div class="body">
-        <div class="previewHost">
+        <div class="previewPanel" id="previewPanel">
+          <div class="previewHost">
+            <canvas id="glPreview"></canvas>
+            <canvas id="fallback2d"></canvas>
+            <model-viewer id="mvPreview" camera-controls exposure="1.05" shadow-intensity="0.25" environment-image="neutral" style="display:none"></model-viewer>
 
-<div class="previewControls" id="previewControls">
-  <div class="pcRow">
-    <div class="pcLabel">Role</div>
-    <select class="pcSel" id="prevRole">
-<option value="all">All</option>
-<option value="wall_outer">Wall (Outer)</option>
-<option value="wall_inner">Wall (Inner)</option>
-<option value="walls">Walls (All)</option>
-<option value="infill">Infill</option>
-<option value="bottom">Bottom</option>
-<option value="top">Top</option>
-<option value="travel">Travel</option>
-    </select>
-    <div class="pcLabel" style="margin-left:8px">Layer</div>
-    <select class="pcSel" id="prevLayerMode">
-      <option value="all">All</option>
-      <option value="single">Single</option>
-    </select>
-  </div>
+            <div class="hud">
+              <div class="chip"><b id="chipPts">0</b> pts</div>
+              <div class="chip">Len <b id="chipLen">0</b> mm</div>
+              <div class="chip">E <b id="chipE">0</b> mm</div>
+              <div class="chip">Time <b id="chipT">0</b> min</div>
+              <div class="chip">Drag rotate • Wheel zoom • Shift+Drag pan</div>
+            </div>
+          </div>
 
-<div class="pcRow">
-  <div class="pcLabel">Mesh</div>
-  <select class="pcSel" id="prevMeshRender">
-    <option value="wire">Wire</option>
-    <option value="solid">Solid</option>
-    <option value="both">Both</option>
-    <option value="off">Off</option>
-  </select>
-  <div class="pcLabel" style="margin-left:8px">Opacity</div>
-  <input class="pcRange" id="prevMeshAlpha" type="range" min="0" max="100" value="28"/>
-  <div class="pcVal" id="prevMeshAlphaVal">28%</div>
-</div>
-<div class="pcRow">
-  <div class="pcLabel">Viewer</div>
-  <select class="pcSel" id="prevViewer">
-    <option value="gl">Studio GL</option>
-    <option value="mv">Model-Viewer</option>
-  </select>
-  <div class="pcHint" style="margin-left:8px; opacity:.75; font-size:11px">Model-Viewer shows mesh only (no toolpath overlay yet).</div>
-</div>
+          <div class="previewDockControls">
+            <div class="previewControls" id="previewControls">
+              <div class="pcRow">
+                <div class="pcLabel">Role</div>
+                <select class="pcSel" id="prevRole">
+                  <option value="all">All</option>
+                  <option value="wall_outer">Wall (Outer)</option>
+                  <option value="wall_inner">Wall (Inner)</option>
+                  <option value="walls">Walls (All)</option>
+                  <option value="infill">Infill</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="top">Top</option>
+                  <option value="travel">Travel</option>
+                </select>
+                <div class="pcLabel" style="margin-left:8px">Layer</div>
+                <select class="pcSel" id="prevLayerMode">
+                  <option value="all">All</option>
+                  <option value="single">Single</option>
+                </select>
+              </div>
 
-  <div class="pcRow">
-    <input class="pcRange" id="prevLayer" type="range" min="0" max="0" value="0"/>
-    <div class="pcVal" id="prevLayerVal">All</div>
-  </div>
+              <div class="pcRow">
+                <div class="pcLabel">Mesh</div>
+                <select class="pcSel" id="prevMeshRender">
+                  <option value="wire">Wire</option>
+                  <option value="solid">Solid</option>
+                  <option value="both">Both</option>
+                  <option value="off">Off</option>
+                </select>
+                <div class="pcLabel" style="margin-left:8px">Opacity</div>
+                <input class="pcRange" id="prevMeshAlpha" type="range" min="0" max="100" value="28"/>
+                <div class="pcVal" id="prevMeshAlphaVal">28%</div>
+              </div>
+              <div class="pcRow">
+                <div class="pcLabel">Viewer</div>
+                <select class="pcSel" id="prevViewer">
+                  <option value="gl">Studio GL</option>
+                  <option value="mv">Model-Viewer</option>
+                </select>
+                <div class="pcHint" style="margin-left:8px; opacity:.75; font-size:11px">Model-Viewer shows mesh only (no toolpath overlay yet).</div>
+              </div>
 
-<div class="pcLegend">
-  <span class="lg"><i data-role="top"></i>Top</span>
-  <span class="lg"><i data-role="bottom"></i>Bottom</span>
-  <span class="lg"><i data-role="infill"></i>Infill</span>
-  <span class="lg"><i data-role="wall_outer"></i>Outer</span>
-  <span class="lg"><i data-role="wall_inner"></i>Inner</span>
-</div>
-</div>
+              <div class="pcRow">
+                <input class="pcRange" id="prevLayer" type="range" min="0" max="0" value="0"/>
+                <div class="pcVal" id="prevLayerVal">All</div>
+              </div>
 
-          <canvas id="glPreview"></canvas>
-          <canvas id="fallback2d"></canvas>
-          <model-viewer id="mvPreview" camera-controls exposure="1.05" shadow-intensity="0.25" environment-image="neutral" style="display:none"></model-viewer>
-
-          <div class="hud">
-            <div class="chip"><b id="chipPts">0</b> pts</div>
-            <div class="chip">Len <b id="chipLen">0</b> mm</div>
-            <div class="chip">E <b id="chipE">0</b> mm</div>
-            <div class="chip">Time <b id="chipT">0</b> min</div>
-            <div class="chip">Drag rotate • Wheel zoom • Shift+Drag pan</div>
+              <div class="pcLegend">
+                <span class="lg"><i data-role="top"></i>Top</span>
+                <span class="lg"><i data-role="bottom"></i>Bottom</span>
+                <span class="lg"><i data-role="infill"></i>Infill</span>
+                <span class="lg"><i data-role="wall_outer"></i>Outer</span>
+                <span class="lg"><i data-role="wall_inner"></i>Inner</span>
+              </div>
+            </div>
+            <div class="previewActions">
+              <button class="btn" id="btnFitPreview">Fit preview</button>
+            </div>
           </div>
         </div>
 
-        <div class="divider"></div>
-
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
-          <button class="btn" id="btnCopy">Copy G-code</button>
-          <button class="btn" id="btnFitPreview">Fit preview</button>
-          <span class="pill" id="outPill">No output</span>
+        <div class="gcodePanel" id="gcodePanel">
+          <div class="gcodeActions">
+            <button class="btn" id="btnCopy">Copy G-code</button>
+            <button class="btn bad" id="btnClearOut">Clear</button>
+            <span class="pill" id="outPill">No output</span>
+          </div>
+          <pre id="gcodePre">No output yet. Click “Run graph”.</pre>
         </div>
-
-        <pre id="gcodePre">No output yet. Click “Run graph”.</pre>
       </div>
     </div>
   </div>
@@ -312,6 +309,8 @@
 <script src="/nodes/slicer-walls.js"></script>
 <script src="/nodes/slicer.js"></script>
 <script src="/nodes/snake-wall.js"></script>
+<script src="/nodes/gcode-output.js"></script>
+<script src="/nodes/preview.js"></script>
 <script src="/nodes/studio-view.js"></script>
 <script src="/nodes/svg-import.js"></script>
 <script src="/nodes/transform.js"></script>

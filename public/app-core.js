@@ -176,6 +176,7 @@ function computeLayerBounds(path){
 }
 
 function updatePreviewControlsFromPath(path){
+  if(!prevLayerEl || !prevLayerValEl) return;
   const b = computeLayerBounds(path);
   previewFilter.maxLayer = b.maxLayer;
   previewFilter.layerHeight = b.layerHeight;
@@ -219,6 +220,7 @@ function filterPreviewPath(path){
 }
 
 function bindPreviewControls(){
+  if(bindPreviewControls.bound) return;
   if(!prevRoleEl || !prevLayerModeEl || !prevLayerEl) return;
 
   prevRoleEl.value = previewFilter.role;
@@ -240,7 +242,9 @@ function bindPreviewControls(){
     updatePreviewLayerLabel();
     schedulePreviewUpdate();
   });
+  bindPreviewControls.bound = true;
 }
+bindPreviewControls.bound = false;
 
 const prevMeshRenderEl = document.getElementById("prevMeshRender");
 const prevMeshAlphaEl = document.getElementById("prevMeshAlpha");
@@ -280,6 +284,7 @@ function setViewerMode(mode){
 }
 
 function bindPreviewMeshControls(){
+  if(bindPreviewMeshControls.bound) return;
   if(prevMeshRenderEl){
     prevMeshRenderEl.value = previewMeshSettings.render;
     prevMeshRenderEl.addEventListener("change", ()=>{
@@ -312,7 +317,9 @@ function bindPreviewMeshControls(){
       schedulePreviewUpdate();
     });
   }
+  bindPreviewMeshControls.bound = true;
 }
+bindPreviewMeshControls.bound = false;
 
 
 

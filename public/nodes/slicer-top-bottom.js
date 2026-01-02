@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Top/Bottom'] = {
   tag:"slicer",
   desc:"Top and bottom skin settings.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"topBottom", type:"slicer_settings"}],
   initData: ()=>({
     topLayers:4,
     bottomLayers:4,
@@ -17,5 +17,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Top/Bottom'] = {
     monotonic:false
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_TOP_BOTTOM, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, topBottom: settings };
+  }
 };

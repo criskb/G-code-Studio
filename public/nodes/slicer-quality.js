@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Quality'] = {
   tag:"slicer",
   desc:"Quality-related slicing settings (layer height, line width).",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"quality", type:"slicer_settings"}],
   initData: ()=>({
     layerHeight:0.2,
     firstLayerHeight:0.24,
@@ -17,5 +17,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Quality'] = {
     detectThinWalls:false
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_QUALITY, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, quality: settings };
+  }
 };
