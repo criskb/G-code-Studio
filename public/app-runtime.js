@@ -1,4 +1,5 @@
 const NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS;
+const UI_NODE_TYPES = new Set(["Studio View", "Preview", "G-code Output"]);
 
 /* ---------------------------
    Graph evaluation engine
@@ -77,6 +78,11 @@ function evaluateGraph(){
     lastOut = evalNode(ex.id, ctx) || lastOut;
   }
   const lastGcode = (lastOut?.gcode) || "";
+
+  const gcodeNodes = Object.values(state.nodes).filter(n=>n.type==="G-code Output");
+  for(const gcodeNode of gcodeNodes){
+    evalNode(gcodeNode.id, ctx);
+  }
 
   evalDirty = false;
   const dt = Math.round(performance.now() - t0);
@@ -631,7 +637,7 @@ function renderNodeEl(node){
 
 
 // Singleton UI nodes: keep them safe (can't duplicate/delete)
-if(node.type === "Studio View"){
+if(UI_NODE_TYPES.has(node.type)){
   bDup.style.display = "none";
   bDel.style.display = "none";
 }
@@ -1268,7 +1274,7 @@ function deleteNode(id){
   renderGraph();
 }
 function ensureDefaultGraph(){
-  const hasGraphNodes = Object.values(state.nodes).some(n=>n.type !== "Studio View");
+  const hasGraphNodes = Object.values(state.nodes).some(n=>!UI_NODE_TYPES.has(n.type));
   if(hasGraphNodes) return;
   state.nodes = {};
   state.links = [];
@@ -2232,7 +2238,7 @@ function demoSTLPlanarSliceTemplateV2(){
 // ---- Slicer (new) ----
 
 
-// --- UI: Studio View (Preview + Output dock) ---
+// --- UI: Preview + G-code Output dock ---
 
 
 
@@ -3369,19 +3375,58 @@ window.addEventListener("keydown", (e)=>{
 /* ---------------------------
    Boot
 ---------------------------- */
-function ensureStudioViewNode(){
+function ensureUiNodes(){
   try{
-    const exists = Object.values(state.nodes).some(n=>n.type==="Studio View");
-    if(exists) return;
-    const id = addNode("Studio View", 1580, 80);
-    const n = state.nodes[id];
-    // Prefer node's own defaultSize if present
-    const def = NODE_DEFS["Studio View"];
-    if(def && def.defaultSize){
-      n.w = def.defaultSize.w;
-      n.h = def.defaultSize.h;
+    const previewExists = Object.values(state.nodes).some(n=>n.type==="Preview");
+    const gcodeExists = Object.values(state.nodes).some(n=>n.type==="G-code Output");
+    const studioNode = Object.values(state.nodes).find(n=>n.type==="Studio View");
+    const linkGcodeOutput = (gcodeId)=>{
+      if(!gcodeId) return;
+      if(state.links.some(L=>L.to.node===gcodeId && L.to.port==="gcode")) return;
+      const exportNode = Object.values(state.nodes).find(n=>n.type==="Export");
+      if(exportNode) connect(exportNode.id, "gcode", gcodeId, "gcode");
+    };
+
+    if(studioNode && (!previewExists && !gcodeExists)){
+      const {x, y, w, h} = studioNode;
+      deleteNode(studioNode.id);
+      const previewId = addNode("Preview", x ?? 1580, y ?? 80);
+      const gcodeId = addNode("G-code Output", x ?? 1580, (y ?? 80) + ((h ?? 680) + 40));
+      const previewDef = NODE_DEFS["Preview"];
+      const gcodeDef = NODE_DEFS["G-code Output"];
+      if(previewDef?.defaultSize){
+        state.nodes[previewId].w = previewDef.defaultSize.w;
+        state.nodes[previewId].h = previewDef.defaultSize.h;
+      }
+      if(gcodeDef?.defaultSize){
+        state.nodes[gcodeId].w = gcodeDef.defaultSize.w;
+        state.nodes[gcodeId].h = gcodeDef.defaultSize.h;
+      }
+      linkGcodeOutput(gcodeId);
+      return;
+    }
+
+    if(!previewExists){
+      const id = addNode("Preview", 1580, 80);
+      const n = state.nodes[id];
+      const def = NODE_DEFS["Preview"];
+      if(def?.defaultSize){
+        n.w = def.defaultSize.w;
+        n.h = def.defaultSize.h;
+      }
+    }
+    if(!gcodeExists){
+      const id = addNode("G-code Output", 1580, 880);
+      const n = state.nodes[id];
+      const def = NODE_DEFS["G-code Output"];
+      if(def?.defaultSize){
+        n.w = def.defaultSize.w;
+        n.h = def.defaultSize.h;
+      }
+      linkGcodeOutput(id);
     }else{
-      n.w = 560; n.h = 780;
+      const existing = Object.values(state.nodes).find(n=>n.type==="G-code Output");
+      linkGcodeOutput(existing?.id);
     }
   }catch(e){ console.warn(e); }
 }
@@ -3399,7 +3444,7 @@ function boot(){
 
   try{ ensureDefaultGraph(); }catch(e){ console.warn(e); toast(e.message||String(e)); }
 
-  try{ ensureStudioViewNode(); }catch(e){ console.warn(e); }
+  try{ ensureUiNodes(); }catch(e){ console.warn(e); }
 
   try{ renderParamEditor(); }catch(e){ console.warn(e); toast(e.message||String(e)); }
 
@@ -3430,19 +3475,22 @@ function boot(){
     }
   }catch(e){}
 }
-// Studio dock: we reuse the existing Preview/Output UI but host it inside a node
-var studioDock = { inited:false, panel:null, head:null, body:null };
-function initStudioDock(){
-  if(studioDock.inited) return;
+// Docked Preview + G-code panels (hosted inside nodes)
+var previewDock = { inited:false, panel:null, body:null };
+var gcodeDock = { inited:false, panel:null, body:null };
+function initPreviewDock(){
+  if(previewDock.inited) return;
   const rp = document.querySelector(".panel.right");
-  studioDock.panel = rp || null;
-  studioDock.head = rp ? rp.querySelector(".head") : null;
-  studioDock.body = rp ? rp.querySelector(".body") : null;
-
-  if(studioDock.head) studioDock.head.id = "studioDockHead";
-  if(studioDock.body) studioDock.body.id = "studioDockBody";
-
-  studioDock.inited = true;
+  previewDock.panel = rp || null;
+  previewDock.body = rp ? rp.querySelector("#previewPanel") : null;
+  previewDock.inited = true;
+}
+function initGcodeDock(){
+  if(gcodeDock.inited) return;
+  const rp = document.querySelector(".panel.right");
+  gcodeDock.panel = rp || null;
+  gcodeDock.body = rp ? rp.querySelector("#gcodePanel") : null;
+  gcodeDock.inited = true;
 }
 
 // Prevent graph drag/pan from stealing interactions inside the preview widgets
