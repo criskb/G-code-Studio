@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Speeds/Flow'] = {
   tag:"slicer",
   desc:"Speed and flow defaults by role.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"speedsFlow", type:"slicer_settings"}],
   initData: ()=>({
     firstLayerSpeed:900,
     travelSpeed:6000,
@@ -21,5 +21,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Speeds/Flow'] = {
     bottomFlow:1.0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_SPEEDS_FLOW, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, speedsFlow: settings };
+  }
 };
