@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Retraction/Travel'] = {
   tag:"slicer",
   desc:"Retraction and travel behavior settings.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"retractionTravel", type:"slicer_settings"}],
   initData: ()=>({
     retract:0.8,
     retractSpeed:1800,
@@ -17,5 +17,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Retraction/Travel'] = {
     coast:false
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_RETRACTION_TRAVEL, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, retractionTravel: settings };
+  }
 };
