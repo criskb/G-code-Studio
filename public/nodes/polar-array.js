@@ -6,7 +6,7 @@ export default {
   def: {
   title:"Polar Array",
   tag:"modifier",
-  desc:"Replicate a path around a center by polar array (like FullControl polar repeat).",
+  desc:"Replicate a path around a center by polar array.",
   inputs:[{name:"in", type:"path"}],
   outputs:[{name:"out", type:"path"}],
   initData:()=>({
