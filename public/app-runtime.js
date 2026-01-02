@@ -24,6 +24,59 @@ function evalNode(nodeId, ctx, stack=[]){
   evalCache.set(nodeId, out);
   return out;
 }
+
+function collectPreviewOutputs(){
+  let mesh = state.outputs.mesh;
+  let path = state.outputs.path;
+  let toolpath = null;
+  let previewToolpath = null;
+  let previewMesh = null;
+  let previewFallback = null;
+  const hasExport = Object.values(state.nodes).some(n=>n.type==="Export");
+
+  for(const n of Object.values(state.nodes)){
+    const def = NODE_DEFS[n.type];
+    if(!def?.outputs?.length) continue;
+    const out = evalCache.get(n.id);
+    if(!out) continue;
+    for(const o of def.outputs){
+      const val = out[o.name];
+      if(!val) continue;
+      if(o.type === "mesh") mesh = val;
+      if(!hasExport && o.type === "path" && Array.isArray(val)) path = val;
+      if(o.type === "toolpath") toolpath = val;
+      if(o.type === "preview") previewFallback = val;
+    }
+    if(out.preview?.type === "toolpath") previewToolpath = out.preview;
+    else if(out.preview?.type === "mesh") previewMesh = out.preview;
+    else if(out.preview) previewFallback = out.preview;
+  }
+
+  if(previewToolpath?.toolpath) toolpath = previewToolpath.toolpath;
+  if(previewMesh?.mesh) mesh = previewMesh.mesh;
+
+  let preview = previewToolpath || previewFallback || null;
+  if(preview && previewMesh?.mesh){
+    preview = {...preview, mesh: previewMesh.mesh};
+  }else if(!preview && previewMesh){
+    preview = previewMesh;
+  }
+
+  state.outputs.mesh = mesh;
+  state.outputs.preview = preview;
+  state.outputs.toolpath = toolpath;
+
+  if(toolpath){
+    const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+    const prof = printerNode?.data || {bedW:220, bedD:220, origin:"center"};
+    const converted = toolpathToPath(toolpath, {maxMoves:200000, profile: prof});
+    state.outputs.path = converted.path;
+    state.outputs.previewWarning = converted.warning;
+  }else{
+    state.outputs.path = path || [];
+    state.outputs.previewWarning = "";
+  }
+}
 function evaluateGraph(){
   const t0 = performance.now();
   setStatus("Running…");
@@ -52,18 +105,30 @@ function evaluateGraph(){
     // Preview-only mode: no Export node, but still evaluate upstream mesh/path for the preview
     let mesh = null;
     let path = [];
+    let toolpath = null;
+    let preview = null;
     for(const n of Object.values(state.nodes)){
       const def = NODE_DEFS[n.type];
       if(!def?.outputs?.length) continue;
-      const wants = def.outputs.some(o=>o.type==="mesh" || o.type==="path");
+      const wants = def.outputs.some(o=>o.type==="mesh" || o.type==="path" || o.type==="toolpath" || o.type==="preview");
       if(!wants) continue;
       const out = evalNode(n.id, ctx);
-      if(out?.mesh) mesh = out.mesh;
-      if(Array.isArray(out?.path)) path = out.path;
+      for(const o of def.outputs){
+        const val = out?.[o.name];
+        if(!val) continue;
+        if(o.type === "mesh") mesh = val;
+        if(o.type === "path" && Array.isArray(val)) path = val;
+        if(o.type === "toolpath") toolpath = val;
+        if(o.type === "preview") preview = val;
+      }
+      if(out?.preview) preview = out.preview;
     }
     state.outputs.mesh = mesh;
     state.outputs.path = Array.isArray(path) ? path : [];
+    state.outputs.toolpath = toolpath;
+    state.outputs.preview = preview;
     state.outputs.gcode = "";
+    collectPreviewOutputs();
     state.outputs.stats = {points:(state.outputs.path?.length||0), length:0, e:0, timeMin:0};
     evalDirty = false;
     const dt = Math.round(performance.now() - t0);
@@ -85,6 +150,7 @@ function evaluateGraph(){
   }
 
   evalDirty = false;
+  collectPreviewOutputs();
   const dt = Math.round(performance.now() - t0);
   setStatus(`OK • ${dt}ms`);
   updateOutputUI();
@@ -98,6 +164,7 @@ function evaluateGraph(){
 const nodeListEl = document.getElementById("nodeList");
 const nodeSearchEl = document.getElementById("nodeSearch");
 const btnAddQuick = document.getElementById("btnAddQuick");
+const btnParams = document.getElementById("btnParams");
 
 // Node Picker (Space): searchable modal list
 const npOverlay = document.getElementById("npOverlay");
@@ -105,12 +172,25 @@ const npOverlay = document.getElementById("npOverlay");
 // App Settings (persisted)
 const appEl = document.querySelector(".app");
 const SETTINGS_KEY = "gcodeStudio_appSettings_v1";
+const USER_CONFIG_ENDPOINT = "/api/user-config";
+const SHORTCUT_DEFAULTS = {
+  openPicker: "Space",
+  openPickerAlt: "Ctrl+KeyK",
+  runGraph: "KeyG",
+  deleteNode: "Delete",
+  deleteNodeAlt: "Backspace",
+  openSettings: "KeyS",
+  openParams: "KeyP",
+  fitView: "KeyF",
+  centerView: "KeyC"
+};
 let appSettings = {
   showLib: false,
   spacePicker: true,
   spacePickerWhileTyping: false,
   pickerDelayMs: 140,
-  spawnAtCursor: true
+  spawnAtCursor: true,
+  shortcuts: { ...SHORTCUT_DEFAULTS }
 };
 
 function loadAppSettings(){
@@ -119,15 +199,50 @@ function loadAppSettings(){
     if(raw){
       const obj = JSON.parse(raw);
       if(obj && typeof obj==="object"){
-        appSettings = {...appSettings, ...obj};
+        appSettings = {...appSettings, ...obj, shortcuts: {...SHORTCUT_DEFAULTS, ...(obj.shortcuts || {})}};
       }
     }
   }catch(_){}
   applyAppSettings();
 }
 
+function mergeUserConfig(cfg){
+  if(!cfg || typeof cfg !== "object") return;
+  if(cfg.appSettings && typeof cfg.appSettings === "object"){
+    const merged = { ...appSettings, ...cfg.appSettings };
+    merged.shortcuts = { ...SHORTCUT_DEFAULTS, ...(cfg.appSettings.shortcuts || {}), ...(appSettings.shortcuts || {}) };
+    appSettings = merged;
+  }
+}
+
+let saveUserConfigT = null;
+function saveUserConfigDebounced(){
+  clearTimeout(saveUserConfigT);
+  saveUserConfigT = setTimeout(async ()=>{
+    try{
+      await fetch(USER_CONFIG_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appSettings })
+      });
+    }catch(_){}
+  }, 250);
+}
+
+async function loadUserConfig(){
+  try{
+    const res = await fetch(USER_CONFIG_ENDPOINT, { cache: "no-store" });
+    if(!res.ok) return;
+    const cfg = await res.json();
+    mergeUserConfig(cfg);
+    applyAppSettings();
+    saveAppSettings();
+  }catch(_){}
+}
+
 function saveAppSettings(){
   try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); }catch(_){}
+  saveUserConfigDebounced();
 }
 
 function applyAppSettings(){
@@ -144,6 +259,20 @@ const setSpacePicker = document.getElementById("setSpacePicker");
 const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
 const setPickerDelay = document.getElementById("setPickerDelay");
 const setSpawnCursor = document.getElementById("setSpawnCursor");
+const shortcutList = document.getElementById("shortcutList");
+
+const SHORTCUT_DEFS = [
+  { key: "openPicker", label: "Open Node Picker", hint: "Space" },
+  { key: "openPickerAlt", label: "Open Node Picker (Alt)", hint: "Ctrl/Cmd+K" },
+  { key: "runGraph", label: "Run graph", hint: "G" },
+  { key: "deleteNode", label: "Delete selected node", hint: "Delete" },
+  { key: "deleteNodeAlt", label: "Delete selected node (Alt)", hint: "Backspace" },
+  { key: "openSettings", label: "Open settings", hint: "S" },
+  { key: "openParams", label: "Open params", hint: "P" },
+  { key: "fitView", label: "Fit view", hint: "F" },
+  { key: "centerView", label: "Center graph", hint: "C" }
+];
+let shortcutCapture = null;
 
 function syncSettingsUI(){
   if(!settingsOverlay) return;
@@ -152,6 +281,7 @@ function syncSettingsUI(){
   setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
   setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
   setSpawnCursor.checked = !!appSettings.spawnAtCursor;
+  renderShortcutList();
 }
 
 function openSettings(){
@@ -187,6 +317,55 @@ bindSetting(setSpacePicker, "spacePicker", v=>!!v);
 bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
 bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
 bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
+
+function shortcutToLabel(code){
+  if(!code) return "—";
+  return code.replace(/Key/,"").replace(/Digit/,"").replace(/\+/g, " + ");
+}
+
+function renderShortcutList(){
+  if(!shortcutList) return;
+  shortcutList.innerHTML = "";
+  for(const def of SHORTCUT_DEFS){
+    const item = document.createElement("div");
+    item.className = "npItem shortcutRow";
+
+    const meta = document.createElement("div");
+    meta.className = "npMeta";
+    const title = document.createElement("div");
+    title.className = "npTitle";
+    title.textContent = def.label;
+    const desc = document.createElement("div");
+    desc.className = "npDesc";
+    desc.textContent = `Default: ${def.hint}`;
+    meta.appendChild(title);
+    meta.appendChild(desc);
+
+    const btn = document.createElement("button");
+    btn.className = "btn shortcutBtn";
+    btn.textContent = shortcutToLabel(appSettings.shortcuts?.[def.key]);
+    btn.addEventListener("click", (e)=>{
+      e.preventDefault();
+      shortcutCapture = { key: def.key, button: btn };
+      btn.classList.add("capture");
+      btn.textContent = "Press key…";
+    });
+
+    item.appendChild(meta);
+    item.appendChild(btn);
+    shortcutList.appendChild(item);
+  }
+}
+
+function eventToShortcut(ev){
+  const parts = [];
+  if(ev.ctrlKey) parts.push("Ctrl");
+  if(ev.metaKey) parts.push("Meta");
+  if(ev.altKey) parts.push("Alt");
+  if(ev.shiftKey) parts.push("Shift");
+  parts.push(ev.code);
+  return parts.join("+");
+}
 
 function canUseSpacePicker(){
   if(!appSettings.spacePicker) return false;
@@ -473,8 +652,8 @@ function renderNodeLibrary(){
 }
 nodeSearchEl.addEventListener("input", renderNodeLibrary);
 btnAddQuick.addEventListener("click", ()=>{ openNodePicker(""); });
-function renderParamEditor(){
-  const wrap = document.getElementById("paramEditor");
+function renderParamEditorInto(wrap){
+  if(!wrap) return;
   wrap.innerHTML = "";
   const table = document.createElement("div");
   table.style.display="flex";
@@ -529,6 +708,11 @@ function renderParamEditor(){
     saveState(); markDirtyAuto();
   });
   wrap.appendChild(add);
+}
+
+function renderParamEditor(){
+  renderParamEditorInto(document.getElementById("paramEditor"));
+  renderParamEditorInto(document.getElementById("paramEditorOverlay"));
 }
 
 /* ---------------------------
@@ -1360,6 +1544,9 @@ function clearOutputs(){
   state.outputs.gcode = "";
   state.outputs.path = [];
   state.outputs.mesh = null;
+  state.outputs.toolpath = null;
+  state.outputs.preview = null;
+  state.outputs.previewWarning = "";
   state.outputs.stats = {points:0,length:0,e:0,timeMin:0};
   updateOutputUI();
   schedulePreviewUpdate();
@@ -1654,6 +1841,7 @@ const fs2 = `
 `;
 const prog2 = glCreateProgram(gl, vs2, fs2);
 preview.progSolid = prog2;
+preview.aPos2 = gl.getAttribLocation(prog2, "aPos");
 preview.aNor = gl.getAttribLocation(prog2, "aNor");
 preview.uVP2 = gl.getUniformLocation(prog2, "uVP");
 preview.uLight = gl.getUniformLocation(prog2, "uLight");
@@ -1787,6 +1975,63 @@ function roleToRGBA(role){
   return hexToRGBAf(hex, a);
 }
 
+function tToRGBA(t){
+  const tt = Math.max(0, Math.min(1, t));
+  const r = Math.round(220 * tt + 30);
+  const g = Math.round(120 * (1 - Math.abs(tt - 0.5) * 2) + 60);
+  const b = Math.round(240 * (1 - tt) + 15);
+  return [r/255, g/255, b/255, 0.95];
+}
+
+function getPreviewColor(pt){
+  const overlay = previewFilter?.overlay || "featureType";
+  if(overlay && overlay !== "featureType" && overlay !== "role"){
+    const vis = pt?.meta?.visual;
+    if(vis && (vis.field === overlay || !vis.field)){
+      if(Array.isArray(vis.color)) return vis.color;
+      if(Number.isFinite(vis.t)) return tToRGBA(vis.t);
+    }
+  }
+  const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
+  return roleToRGBA(role);
+}
+
+function toolpathToPath(toolpath, options){
+  if(!toolpath || !toolpath.layers) return {path:[], warning:""};
+  const maxMoves = options?.maxMoves ?? 200000;
+  const profile = options?.profile || null;
+  let moveCount = 0;
+  for(const layer of toolpath.layers){ moveCount += (layer.moves||[]).length; }
+  const step = moveCount > maxMoves ? Math.ceil(moveCount / maxMoves) : 1;
+  const warning = step > 1 ? `Preview decimated: ${moveCount.toLocaleString()} moves → every ${step}th.` : "";
+  const path = [];
+  let idx = 0;
+  let last = null;
+  const layerHeight = (toolpath.layers?.length > 1)
+    ? Math.abs((toolpath.layers[1].z ?? 0) - (toolpath.layers[0].z ?? 0)) || 0.2
+    : 0.2;
+
+  for(let li=0; li<toolpath.layers.length; li++){
+    const layer = toolpath.layers[li];
+    const layerZ = layer.z ?? last?.z ?? 0;
+    for(const move of (layer.moves || [])){
+      idx += 1;
+      if(step > 1 && (idx % step) !== 0) continue;
+      const x = move.x ?? last?.x ?? 0;
+      const y = move.y ?? last?.y ?? 0;
+      const z = move.z ?? layerZ ?? last?.z ?? 0;
+      const pos = profile ? toMachineXY(x, y, profile) : {X:x, Y:y};
+      const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
+      if(!meta.role && meta.feature) meta.role = meta.feature;
+      if(meta.layerHeight == null) meta.layerHeight = layerHeight;
+      const travel = move.kind === "travel" || meta.feature === "travel";
+      path.push({x:pos.X, y:pos.Y, z, layer: li, travel, meta, role: meta.role});
+      last = {x, y, z};
+    }
+  }
+  return {path, warning};
+}
+
 
 
 function uploadBuffer(buf, arr){
@@ -1836,8 +2081,7 @@ function setPreviewPath(machinePath){
     const Y = pt.Y ?? pt.y ?? 0;
     const Z = pt.z ?? 0;
     pos.push(X, Y, Z);
-    const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
-    const rgba = roleToRGBA(role);
+    const rgba = getPreviewColor(pt);
     col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
   };
 
@@ -1877,12 +2121,14 @@ function setPreviewMesh(meshModel, profile){
 
   // cache hash for MV (tri count + bounds)
   try{
-    const b = meshModel?.bounds || (meshModel?.tris ? computeMeshBounds(meshModel.tris) : null);
-    const h = `${meshModel?.tris?.length||0}|${b?.minx||0},${b?.miny||0},${b?.minz||0}|${b?.maxx||0},${b?.maxy||0},${b?.maxz||0}`;
+    const trisHash = meshToTris(meshModel) || new Float32Array(0);
+    const b = meshModel?.bounds || (trisHash.length ? computeMeshBounds(trisHash) : null);
+    const h = `${trisHash.length||0}|${b?.minx||0},${b?.miny||0},${b?.minz||0}|${b?.maxx||0},${b?.maxy||0},${b?.maxz||0}`;
     preview.lastMeshHash = h;
   }catch(_){}
 
-  if(!meshModel || !meshModel.tris || meshModel.tris.length<9){
+  const tris = meshToTris(meshModel);
+  if(!meshModel || !tris || tris.length<9){
     uploadBuffer(preview.meshBuf, new Float32Array(0));
     preview.counts.mesh = 0;
     uploadBuffer(preview.meshTriPosBuf, new Float32Array(0));
@@ -1891,7 +2137,6 @@ function setPreviewMesh(meshModel, profile){
     return;
   }
 
-  const tris = meshModel.tris;
   const triCount = Math.floor(tris.length/9);
   const maxTris = 50000;
   const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;
@@ -1958,8 +2203,9 @@ function fitPreviewToData(){
 
 // Include mesh bounds (if present) so fit centers on imported geometry too
 const mesh = state.outputs.mesh;
-if(mesh && mesh.tris && mesh.tris.length>=9){
-  const b = mesh.bounds || computeMeshBounds(mesh.tris);
+const meshTris = meshToTris(mesh);
+if(mesh && meshTris && meshTris.length>=9){
+  const b = mesh.bounds || computeMeshBounds(meshTris);
   const corners = [
     [b.min.x, b.min.y],
     [b.max.x, b.min.y],
@@ -1975,7 +2221,7 @@ if(mesh && mesh.tris && mesh.tris.length>=9){
   maxZ = Math.max(maxZ, b.max.z);
 }
 
-  if(!pts.length && !(mesh && mesh.tris && mesh.tris.length>=9)){
+  if(!pts.length && !(mesh && meshTris && meshTris.length>=9)){
     preview.cam.target = v3(prof.bedW/2, prof.bedD/2, 35);
     preview.cam.radius = Math.max(prof.bedW, prof.bedD)*1.9;
     return;
@@ -2063,13 +2309,34 @@ function drawPreviewLoop(){
   gl.drawArrays(gl.LINES, 0, preview.counts.bed);
 
 
-// Draw mesh (wireframe)
-if(preview.counts.mesh>1){
-  setColor(text, 0.14);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshBuf);
-  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.14));
-  gl.drawArrays(gl.LINES, 0, preview.counts.mesh);
+// Draw mesh (wireframe/solid)
+if(previewMeshSettings.render !== "off"){
+  if(previewMeshSettings.render !== "solid" && preview.counts.mesh>1){
+    setColor(text, 0.14);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshBuf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.14));
+    gl.drawArrays(gl.LINES, 0, preview.counts.mesh);
+  }
+
+  if(previewMeshSettings.render !== "wire" && preview.countsTris>2 && preview.progSolid){
+    gl.useProgram(preview.progSolid);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshTriPosBuf);
+    if(preview.aPos2 >= 0){
+      gl.enableVertexAttribArray(preview.aPos2);
+      gl.vertexAttribPointer(preview.aPos2, 3, gl.FLOAT, false, 0, 0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshTriNorBuf);
+    if(preview.aNor >= 0){
+      gl.enableVertexAttribArray(preview.aNor);
+      gl.vertexAttribPointer(preview.aNor, 3, gl.FLOAT, false, 0, 0);
+    }
+    gl.uniform3f(preview.uLight, 0.3, 0.6, 1.0);
+    gl.uniform3f(preview.uBase, 0.75, 0.85, 1.0);
+    gl.uniform1f(preview.uAlpha, previewMeshSettings.alpha);
+    gl.drawArrays(gl.TRIANGLES, 0, preview.countsTris);
+    gl.useProgram(preview.prog);
+  }
 }
 
   // Draw path
@@ -2116,9 +2383,12 @@ function updatePreview(){
 if(previewMeshSettings.viewer === "mv"){
   const mv = document.getElementById("mvPreview");
   if(mv && customElements.get("model-viewer")){
-    const mesh = state.outputs.mesh || null;
+    const mesh = state.outputs.preview?.mesh || state.outputs.mesh || null;
     try{
-      if(mesh && mesh.tris && mesh.tris.length>=9){
+      if(mesh && mesh.glbUrl){
+        mv.style.display = "block";
+        mv.src = mesh.glbUrl;
+      }else if(mesh && meshToTris(mesh)?.length >= 9){
         mv.style.display = "block";
         const url = meshToObjectURL_GLb(mesh);
         mv.src = url;
@@ -2137,10 +2407,25 @@ if(previewMeshSettings.viewer === "mv"){
   if(prof.bedW !== preview.bed.w || prof.bedD !== preview.bed.d){
     buildBedBuffers(prof.bedW, prof.bedD);
   }
-  setPreviewMesh(state.outputs.mesh||null, prof);
-  const __pAll = (state.outputs.path||[]);
-  updatePreviewControlsFromPath(__pAll);
-  setPreviewPath(filterPreviewPath(__pAll));
+  const previewPayload = state.outputs.preview || null;
+  const previewMesh = previewPayload?.mesh || state.outputs.mesh || null;
+  const previewToolpath = previewPayload?.toolpath || state.outputs.toolpath || null;
+  const overlays = previewPayload?.overlays || (previewToolpath ? ["featureType"] : []);
+
+  updatePreviewOverlayOptions(overlays);
+  updatePreviewLegend(previewPayload?.legend || null);
+  setPreviewMesh(previewMesh, prof);
+
+  let pathForPreview = (state.outputs.path||[]);
+  let warning = "";
+  if(previewToolpath){
+    const converted = toolpathToPath(previewToolpath, {maxMoves:200000, profile: prof});
+    pathForPreview = converted.path;
+    warning = converted.warning;
+  }
+  updatePreviewWarning(previewPayload?.warning || warning);
+  updatePreviewControlsFromPath(pathForPreview);
+  setPreviewPath(filterPreviewPath(pathForPreview));
 }
 
 let previewDirty = true;
@@ -2387,6 +2672,7 @@ const demoMenu = document.getElementById("demoMenu");
 const nodePropsOverlay = document.getElementById("nodePropsOverlay");
 const nodePropsTitle = document.getElementById("nodePropsTitle");
 const nodePropsContent = document.getElementById("nodePropsContent");
+const paramOverlay = document.getElementById("paramOverlay");
 
 function populateDemoMenu(){
   demoMenu.innerHTML = "";
@@ -2418,6 +2704,16 @@ function populateDemoMenu(){
 
 function closeNodeProps(){
   nodePropsOverlay?.classList?.remove("open");
+}
+
+function openParamsOverlay(){
+  renderParamEditor();
+  paramOverlay?.classList?.add("open");
+  paramOverlay?.setAttribute("aria-hidden","false");
+}
+function closeParamsOverlay(){
+  paramOverlay?.classList?.remove("open");
+  paramOverlay?.setAttribute("aria-hidden","true");
 }
 
 function openNodeProps(nodeId){
@@ -2575,27 +2871,61 @@ document.addEventListener("mousedown", (e)=>{
 nodePropsOverlay?.addEventListener("mousedown", (e)=>{
   if(e.target === nodePropsOverlay) closeNodeProps();
 });
+paramOverlay?.addEventListener("mousedown", (e)=>{
+  if(e.target === paramOverlay) closeParamsOverlay();
+});
+
+btnParams?.addEventListener("click", (e)=>{
+  e.preventDefault();
+  openParamsOverlay();
+});
 
 /* ---------------------------
    Keyboard
 ---------------------------- */
 window.addEventListener("keydown", (e)=>{
+  if(shortcutCapture){
+    e.preventDefault();
+    const key = shortcutCapture.key;
+    const btn = shortcutCapture.button;
+    if(e.key === "Escape"){
+      shortcutCapture = null;
+      if(btn){
+        btn.classList.remove("capture");
+        btn.textContent = shortcutToLabel(appSettings.shortcuts[key]);
+      }
+      return;
+    }
+    appSettings.shortcuts[key] = eventToShortcut(e);
+    shortcutCapture = null;
+    if(btn){
+      btn.classList.remove("capture");
+      btn.textContent = shortcutToLabel(appSettings.shortcuts[key]);
+    }
+    saveAppSettings();
+    return;
+  }
+
   // Close menus / overlays
   if(e.key==="Escape"){
     try{ demoMenu?.classList?.remove("open"); }catch(_){}
     try{ closeNodePicker(); }catch(_){}
     try{ closeSettings(); }catch(_){}
     try{ closeNodeProps(); }catch(_){}
+    try{ closeParamsOverlay(); }catch(_){}
     return;
   }
 
+  const shortcut = eventToShortcut(e);
+  const shortcuts = appSettings.shortcuts || SHORTCUT_DEFAULTS;
+
   // Comfy-style node picker
-  if((e.code==="Space" || e.key===" ") && canUseSpacePicker()){
+  if(shortcut === shortcuts.openPicker && canUseSpacePicker()){
     e.preventDefault();
     if(!nodePicker.open) openNodePicker("");
     return;
   }
-  if((e.ctrlKey || e.metaKey) && (e.key==="k" || e.key==="K")){
+  if(shortcut === shortcuts.openPickerAlt){
     if(canUseSpacePicker()){
       e.preventDefault();
       if(!nodePicker.open) openNodePicker("");
@@ -2603,15 +2933,28 @@ window.addEventListener("keydown", (e)=>{
   }
 
   // Graph shortcuts
-  if((e.key==="Delete" || e.key==="Backspace") && !isTyping()){
+  if((shortcut === shortcuts.deleteNode || shortcut === shortcuts.deleteNodeAlt) && !isTyping()){
     const id = state.ui.selectedNodeId;
     if(id){ deleteNode(id); saveState(); markDirtyAuto(); }
   }
-  if((e.key==="g"||e.key==="G") && !isTyping()){
+  if(shortcut === shortcuts.runGraph && !isTyping()){
     try{ evaluateGraph(); toast("Graph ran"); }catch(err){ toast(err.message||String(err)); }
   }
-  if((e.key==="f"||e.key==="F") && !isTyping()){
+  if(shortcut === shortcuts.openSettings && !isTyping()){
+    e.preventDefault();
+    openSettings();
+  }
+  if(shortcut === shortcuts.openParams && !isTyping()){
+    e.preventDefault();
+    openParamsOverlay();
+  }
+  if(shortcut === shortcuts.fitView && !isTyping()){
+    e.preventDefault();
     document.getElementById("btnFit").click();
+  }
+  if(shortcut === shortcuts.centerView && !isTyping()){
+    e.preventDefault();
+    document.getElementById("btnCenter").click();
   }
 });
 
@@ -2674,8 +3017,9 @@ function ensureUiNodes(){
   }catch(e){ console.warn(e); }
 }
 
-function boot(){
+async function boot(){
   try{ loadAppSettings(); }catch(e){ console.warn(e); }
+  try{ await loadUserConfig(); }catch(e){ console.warn(e); }
   try{ loadWorkflows(); }catch(e){ console.warn(e); toast(e.message||String(e)); }
 
   try{ state = loadState(); }catch(e){ console.warn(e); state = defaultState(); toast(e.message||String(e)); }
