@@ -5291,58 +5291,8 @@ function draw2dFallback(machinePath){
 }
 
 /* ---------------------------
-   Demos
----------------------------- */function demoPlanarSliceCubeV2(){
-  state = defaultState();
-  const prim = addNode("Mesh Primitive", 120, 120);
-  const slic = addNode("Slicer", 460, 140);
-  const prn  = addNode("Printer", 780, 120);
-  const exp  = addNode("Export", 980, 120);
-
-  state.nodes[prim].data.kind = "cube";
-  state.nodes[prim].data.size = 120;
-  state.nodes[prim].data.height = 40;
-  state.nodes[prim].data.bedAlign = true;
-
-  state.nodes[slic].data.mode = "planar";
-  state.nodes[slic].data.layerHeight = 0.24;
-  state.nodes[slic].data.lineWidth = 0.45;
-  state.nodes[slic].data.perimeters = 2;
-  state.nodes[slic].data.infillPct = 18;
-  state.nodes[slic].data.infillPattern = "grid";
-  state.nodes[slic].data.topLayers = 4;
-  state.nodes[slic].data.bottomLayers = 4;
-  state.nodes[slic].data.bedAlign = true;
-
-  connect(prim, 0, slic, 0);
-  connect(slic, 1, exp, 0);
-  connect(prn, 0, exp, 1);
-
-  selectNode(exp);
-  centerViewOn(prim);
-  toast("Loaded demo: Planar Slice (v2) — Cube");
-  markDirtyAuto();
-}
-
-function demoSTLPlanarSliceTemplateV2(){
-  state = defaultState();
-  const imp = addNode("Import Mesh", 120, 120);
-  const slic = addNode("Slicer", 460, 140);
-  const prn  = addNode("Printer", 780, 120);
-  const exp  = addNode("Export", 980, 120);
-
-  state.nodes[slic].data.mode = "planar";
-  state.nodes[slic].data.layerHeight = 0.24;
-
-  connect(imp, 0, slic, 0);
-  connect(slic, 1, exp, 0);
-  connect(prn, 0, exp, 1);
-
-  selectNode(imp);
-  centerViewOn(imp);
-  toast("Loaded demo: STL Planar Slice (v2) — template");
-  markDirtyAuto();
-}
+   Nodes are loaded from /nodes via the node manager API
+---------------------------- */
 
 /* ---------------------------
    Geometry & Slicing v2
@@ -5557,360 +5507,60 @@ const SCHEMA_SLICER_V2 = [
   ]},
 ];
 
-// Preserve old behavior as legacy nodes (hidden from library, but still loadable)
-NODE_DEFS["Mesh Primitive (Legacy)"] = NODE_DEFS["Mesh Primitive"];
-NODE_DEFS["Mesh Primitive (Legacy)"].title = "Mesh Primitive (Legacy)";
-NODE_DEFS["Mesh Primitive (Legacy)"].hidden = true;
+/* ---------------------------
+   Demos
+---------------------------- */
+function demoPlanarSliceCubeV2(){
+  state = defaultState();
+  const prim = addNode("Mesh Primitive", 120, 120);
+  const slic = addNode("Slicer", 460, 140);
+  const prn  = addNode("Printer", 780, 120);
+  const exp  = addNode("Export", 980, 120);
 
-// Hide old Mesh Import from the library (still works when loading older graphs)
-NODE_DEFS["Mesh Import"].title = "Mesh Import (Legacy)";
-NODE_DEFS["Mesh Import"].hidden = true;
+  state.nodes[prim].data.kind = "cube";
+  state.nodes[prim].data.size = 120;
+  state.nodes[prim].data.height = 40;
+  state.nodes[prim].data.bedAlign = true;
 
-// ---- Import Mesh (new) ----
-NODE_DEFS["Import Mesh"] = {
-  title:"Import Mesh",
-  defaultW:360,
-  defaultH:520,
-  tag:"mesh",
-  desc:"Import an STL with an in-node preview. Outputs mesh + optional auto-path (surface raster or quick planar). Use Slicer for full control.",
-  inputs: [],
-  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
-  initData: ()=>({
-    bedAlign:true,
-    centerXY:true,
-    scale:1,
-    rxDeg:0, ryDeg:0, rzDeg:0,
-    tx:0, ty:0, tz:0,
-    b64:"",
-    pathMode:"surface",
-    spacing:1.0, step:0.6, angleDeg:0, margin:0, zOffset:0, surfaceSerp:true, maxPts:0,
-    q_layerHeight:0.24, q_lineWidth:0.45, q_perimeters:2, q_infillPct:18, q_infillPattern:"grid", q_infillAngle:45, q_topLayers:4, q_bottomLayers:4, q_serpentine:true, q_brickLayer:false, q_solidPattern:""
-  }),
-  render:(node, mount)=>{
-    const d=node.data;
-    mount.innerHTML="";
+  state.nodes[slic].data.mode = "planar";
+  state.nodes[slic].data.layerHeight = 0.24;
+  state.nodes[slic].data.lineWidth = 0.45;
+  state.nodes[slic].data.perimeters = 2;
+  state.nodes[slic].data.infillPct = 18;
+  state.nodes[slic].data.infillPattern = "grid";
+  state.nodes[slic].data.topLayers = 4;
+  state.nodes[slic].data.bottomLayers = 4;
+  state.nodes[slic].data.bedAlign = true;
 
-    const file = document.createElement("input");
-    file.type="file";
-    file.accept=".stl,model/stl,application/sla";
-    file.style.width="100%";
-    for(const ev of ["pointerdown","mousedown","click"]){ file.addEventListener(ev, e=>e.stopPropagation()); }
-    file.addEventListener("change", async ()=>{
-      const f = file.files && file.files[0];
-      if(!f) return;
-      try{
-        const buf = await f.arrayBuffer();
-        d.b64 = b64FromArrayBuffer(buf);
-        const mesh = parseSTL(buf);
-        meshRuntimeCache.set(node.id, {mesh});
-        toast("STL loaded");
-        markDirtyAuto();
-        saveState();
-        refreshNodeContent(node.id);
-      }catch(e){ console.warn(e); toast(e.message||String(e)); }
-    });
-    mount.appendChild(file);
+  connect(prim, 0, slic, 0);
+  connect(slic, 1, exp, 0);
+  connect(prn, 0, exp, 1);
 
-    const box = document.createElement("div");
-    box.className="miniBox";
-    const canvas = document.createElement("canvas");
-    canvas.width=520; canvas.height=260;
-    box.appendChild(canvas);
-    mount.appendChild(box);
-
-    const form = document.createElement("div");
-    renderSchema(SCHEMA_IMPORT_MESH_V2, node, form);
-    mount.appendChild(form);
-
-    const token = (node._meshPrevTok = (node._meshPrevTok||0)+1);
-    function loop(t){
-      if(node._meshPrevTok !== token) return;
-      const runtime = meshRuntimeCache.get(node.id);
-      let mesh = runtime?.mesh || null;
-      if(!mesh && d.b64){
-        try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }catch(_){ mesh=null; }
-        if(mesh) meshRuntimeCache.set(node.id, {mesh});
-      }
-      if(mesh){
-        let m = mesh;
-        m = centerMesh(m, d.centerXY, false);
-        m = applyMeshTransform(m, d);
-        if(d.bedAlign) m = bedAlignMesh(m);
-        drawWireframe2D(canvas, m.tris, m.bounds, t*0.001, null);
-      }else{
-        const ctx=canvas.getContext("2d");
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle="rgba(255,255,255,0.55)";
-        ctx.font="12px ui-monospace, SFMono-Regular, Menlo, monospace";
-        ctx.fillText("Choose an STL to preview", 14, 22);
-      }
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
-  },
-  evaluate:(node, ctx)=>{
-    const d=node.data;
-    const runtime = meshRuntimeCache.get(node.id);
-    let mesh = runtime?.mesh || null;
-    if(!mesh && d.b64){
-      try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }catch(_){ mesh=null; }
-      if(mesh) meshRuntimeCache.set(node.id, {mesh});
-    }
-    if(!mesh) return { mesh:null };
-    let m = mesh;
-    m = centerMesh(m, d.centerXY, false);
-    m = applyMeshTransform(m, d);
-    if(d.bedAlign) m = bedAlignMesh(m);
-    
-// Optional auto-path
-let path = [];
-const pm = String(d.pathMode||"none");
-if(pm==="surface"){
-  path = surfaceRasterPath(m, { spacing:d.spacing, step:d.step, angleDeg:d.angleDeg, margin:d.margin, zOffset:d.zOffset, serpentine:!!d.surfaceSerp }, 0.2, (d.maxPts||0)? d.maxPts : null);
-}else if(pm==="planar"){
-  path = sliceMeshPlanar(m, { layerHeight:d.q_layerHeight, lineWidth:d.q_lineWidth, perimeters:d.q_perimeters, infillPct:d.q_infillPct, infillPattern:d.q_infillPattern, infillAngle:d.q_infillAngle, topLayers:d.q_topLayers, bottomLayers:d.q_bottomLayers, serpentine:!!d.q_serpentine, brickLayer:!!d.q_brickLayer, solidPattern:(d.q_solidPattern||"") });
-}
-annotatePathHints(path, d);
-    return { mesh:m, path };
-
-  }
-};
-
-// ---- Mesh Primitive (new) ----
-NODE_DEFS["Mesh Primitive"] = {
-  title:"Mesh Primitive",
-  defaultW:360,
-  defaultH:520,
-  tag:"mesh",
-  desc:"Procedural mesh generator with in-node preview. Outputs mesh + optional auto-path (surface raster or quick planar). Use Slicer for full control.",
-  inputs: [],
-  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
-  initData: ()=>({
-    kind:"cube",
-    size:120,
-    height:40,
-    seg:40,
-    waveAmp:8,
-    waveFreq:3,
-    bedAlign:true,
-    previewMode:"wireframe"
-  }),
-  render:(node, mount)=>{
-    const d=node.data;
-    mount.innerHTML="";
-
-// Top selectors (primitive + preview style)
-const top = document.createElement("div");
-top.className = "miniTopRow";
-
-const kindSel = document.createElement("select");
-kindSel.innerHTML = `
-  <option value="cube">Cube</option>
-  <option value="dome">Dome</option>
-  <option value="wavy">Wavy Plane</option>
-`;
-kindSel.value = d.kind || "cube";
-for(const ev of ["pointerdown","mousedown","click"]){ kindSel.addEventListener(ev, e=>e.stopPropagation()); }
-kindSel.addEventListener("change", ()=>{
-  d.kind = kindSel.value;
+  selectNode(exp);
+  centerViewOn(prim);
+  toast("Loaded demo: Planar Slice (v2) — Cube");
   markDirtyAuto();
-  saveState();
-  refreshNodeContent(node.id);
-});
-top.appendChild(kindSel);
-
-const styleSel = document.createElement("select");
-styleSel.innerHTML = `
-  <option value="wireframe">Wireframe</option>
-  <option value="solid">Solid</option>
-  <option value="shaded">Shaded</option>
-  <option value="points">Points</option>
-`;
-styleSel.value = d.previewMode || "wireframe";
-for(const ev of ["pointerdown","mousedown","click"]){ styleSel.addEventListener(ev, e=>e.stopPropagation()); }
-styleSel.addEventListener("change", ()=>{
-  d.previewMode = styleSel.value;
-  markDirtyAuto();
-  saveState();
-});
-top.appendChild(styleSel);
-
-mount.appendChild(top);
-
-const box = document.createElement("div");
-box.className="miniBox r23";
-const canvas = document.createElement("canvas");
-canvas.width=480; canvas.height=720; // 2:3 base ratio
-box.appendChild(canvas);
-mount.appendChild(box);
-
-// Make canvas resolution match element size for crisp preview
-try{
-  if(node._ro){ node._ro.disconnect(); node._ro=null; }
-  node._ro = new ResizeObserver(()=>{
-    const r = box.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const ww = Math.max(2, Math.floor(r.width * dpr));
-    const hh = Math.max(2, Math.floor(r.height * dpr));
-    if(canvas.width!==ww || canvas.height!==hh){
-      canvas.width = ww; canvas.height = hh;
-    }
-  });
-  node._ro.observe(box);
-}catch(_){}
-
-const form = document.createElement("div");
-renderSchema(SCHEMA_MESH_PRIMITIVE_V2, node, form);
-mount.appendChild(form);
-    const token = (node._meshPrevTok = (node._meshPrevTok||0)+1);
-    function loop(t){
-      if(node._meshPrevTok !== token) return;
-      const legacy = NODE_DEFS["Mesh Primitive (Legacy)"];
-      const tmp = { id: node.id, type:"Mesh Primitive (Legacy)", data: {...d, surfacePathEnabled:false, pathMode:"surface"} };
-      let out=null;
-      try{ out = legacy.evaluate(tmp, {base:{layerHeight:0.2}}); }catch(_){ out=null; }
-      const mesh = out?.mesh || null;
-      if(mesh){
-        let m = mesh;
-        if(d.bedAlign) m = bedAlignMesh(m);
-        drawMeshPreview2D(canvas, m.tris, m.bounds, t*0.001, null, d.previewMode||"wireframe");
-      }else{
-        const ctx=canvas.getContext("2d");
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-      }
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
-  },
-  evaluate:(node, ctx)=>{
-    const d=node.data;
-    const legacy = NODE_DEFS["Mesh Primitive (Legacy)"];
-    const tmp = { id: node.id, type:"Mesh Primitive (Legacy)", data: {...d, surfacePathEnabled:false, pathMode:"surface"} };
-    const out = legacy.evaluate(tmp, ctx);
-    let mesh = out?.mesh || null;
-    if(mesh && d.bedAlign) mesh = bedAlignMesh(mesh);
-    return { mesh };
-  }
-};
-
-// ---- Slicer (new) ----
-NODE_DEFS["Slicer"] = {
-  title:"Slicer",
-  defaultW:360,
-  defaultH:460,
-  tag:"path",
-  desc:"Slices a mesh into toolpaths. Inputs mesh → outputs mesh + path.",
-  inputs: [{name:"mesh", type:"mesh"}],
-  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
-  initData: ()=>({
-  bedAlign:true, mode:"planar", originMode:"from_printer", scale:1, rotZ:0, zOffset:0,
-  layerHeight:0.2, firstLayerHeight:0.24, lineWidth:0.45, firstLayerLineWidth:0.50,
-  perimeters:2, topLayers:4, bottomLayers:4,
-  infillPct:15, infillPattern:"grid", infillAngle:45, serpentine:true, brickLayer:false, solidPattern:"",
-  skirtLines:0, skirtDistance:6, brimWidth:0, brimLines:0,
-  firstLayerSpeed:900, travelSpeed:6000, wallSpeed:1800, infillSpeed:2400, topSpeed:1500, bottomSpeed:1200,
-  wallFlow:1.0, infillFlow:1.0, topFlow:1.0, bottomFlow:1.0,
-  retract:0.8, retractSpeed:1800, retractMinTravel:1.0, zHop:0,
-  fanFirstLayer:0, fanOtherLayers:100,
-  spacing:1.0, step:0.6, angleDeg:0, margin:0, surfaceSerp:true, maxPts:0
-}),
-  render:(node, mount)=>{
-    mount.innerHTML="";
-    const hint = document.createElement("div");
-    hint.className="hint";
-    hint.innerHTML = `Workflow: <b>(mesh)</b> → <b>Slicer</b> → <b>(path)</b> → Export. Connect a mesh and run the graph.`;
-    mount.appendChild(hint);
-    const form = document.createElement("div");
-    renderSchema(SCHEMA_SLICER_V2, node, form);
-    mount.appendChild(form);
-  },
-  evaluate:(node, ctx)=>{
-    const d=node.data;
-    const inp = ctx.getInput(node.id, "mesh");
-    let mesh = (inp?.mesh || inp || null);
-    if(!mesh || !mesh.tris) return { mesh:null, path:[] };
-
-    let m = mesh;
-    if(d.bedAlign) m = bedAlignMesh(m);
-
-    let path = [];
-    if(d.mode === "planar"){
-      path = sliceMeshPlanar(m, {
-        layerHeight: d.layerHeight,
-        lineWidth: d.lineWidth,
-        perimeters: d.perimeters,
-        infillPct: d.infillPct,
-        infillAngle: d.infillAngle,
-        infillPattern: d.infillPattern,
-        topLayers: d.topLayers,
-        bottomLayers: d.bottomLayers,
-        serpentine: d.serpentine,
-        maxLayers: 900,
-        maxSegs: 260000,
-        roleOrder: "bottom,walls,infill,top"
-      });
-    }else{
-      
-// Build/refresh a coarse spatial index for projection (cell size derived from spacing)
-try{
-  const cs = Math.max(2, Number(d.cellSize||0) || (Number(d.spacing||1.0) * 2.0));
-  if(!m.index || m.index.cs !== cs) buildMeshIndex(m, cs);
-}catch(_){}
-path = surfaceRasterPath(m, {
-  spacing:d.spacing,
-  step:d.step,
-  angleDeg:d.angleDeg,
-  margin:d.margin,
-  zOffset:d.zOffset,
-  serpentine: !!d.surfaceSerp
-}, (ctx.base?.layerHeight||0.2), (d.maxPts||0)? d.maxPts : null);
-annotatePathHints(path, d);
 }
-    return { mesh:m, path };
-  }
-};
 
-// --- UI: Studio View (Preview + Output dock) ---
-NODE_DEFS["Studio View"] = {
-  title:"Studio View",
-  tag:"ui",
-  desc:"Docked Preview & Output as a node so the canvas can use full width.",
-  inputs: [],
-  outputs: [],
-  defaultW: 560,
-  defaultH: 780,
-  initData: ()=>({}),
-  render:(node, mount)=>{
-    initStudioDock();
-    mount.innerHTML = "";
-    const wrap = document.createElement("div");
-    wrap.className = "studioDock";
-    mount.appendChild(wrap);
+function demoSTLPlanarSliceTemplateV2(){
+  state = defaultState();
+  const imp = addNode("Import Mesh", 120, 120);
+  const slic = addNode("Slicer", 460, 140);
+  const prn  = addNode("Printer", 780, 120);
+  const exp  = addNode("Export", 980, 120);
 
-    if(studioDock.head) wrap.appendChild(studioDock.head);
-    if(studioDock.body) wrap.appendChild(studioDock.body);
-    else{
-      const h = document.createElement("div");
-      h.className = "hint";
-      h.textContent = "Preview dock missing. (It should be created automatically.)";
-      wrap.appendChild(h);
-    }
+  state.nodes[slic].data.mode = "planar";
+  state.nodes[slic].data.layerHeight = 0.24;
 
-    // Ensure preview controls remain interactive inside the node
-    stopGraphGestures(wrap.querySelector("#glPreview"));
-    stopGraphGestures(wrap.querySelector("#mvPreview"));
-    stopGraphGestures(wrap.querySelector("#previewControls"));
-    stopGraphGestures(wrap.querySelector("#btnCopy"));
-    stopGraphGestures(wrap.querySelector("#btnFitPreview"));
-    stopGraphGestures(wrap.querySelector("#btnClearOut"));
+  connect(imp, 0, slic, 0);
+  connect(slic, 1, exp, 0);
+  connect(prn, 0, exp, 1);
 
-    // Nudge a refresh so the GL canvas matches its new host size
-    try{ schedulePreviewUpdate(); }catch(_){}
-  },
-  // make it big by default
-  defaultSize: { w: 560, h: 780 }
-};
-
+  selectNode(imp);
+  centerViewOn(imp);
+  toast("Loaded demo: STL Planar Slice (v2) — template");
+  markDirtyAuto();
+}
 
 
 function demoFeaturePaintOptimize(){
