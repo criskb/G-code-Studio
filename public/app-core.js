@@ -210,23 +210,40 @@ function normalizePreviewRole(role, travel){
 
 function filterPreviewPath(path){
   if(!path || !path.length) return path || [];
-  let out = path;
-
-  // Role filter (supports grouped walls + travel)
   const want = previewFilter.role;
-  if(want && want !== "all"){
-    out = out.filter(p=>{
-      const r = normalizePreviewRole(p.meta?.role || p.role || "", !!p.travel);
-      if(want==="walls") return (r==="walls" || r==="wall_outer" || r==="wall_inner");
-      return r === want;
-    });
-  }
+  const singleLayer = previewFilter.layerMode === "single";
+  const filtering = (want && want !== "all") || singleLayer;
+  if(!filtering) return path;
 
-  // Layer filter
-  if(previewFilter.layerMode === "single"){
-    const lh = previewFilter.layerHeight || (pickLayerHeight(path, null) || 0.2);
-    const Lwant = previewFilter.layer|0;
-    out = out.filter(p=> inferLayer(p, lh) === Lwant);
+  const lh = singleLayer ? (previewFilter.layerHeight || (pickLayerHeight(path, null) || 0.2)) : null;
+  const Lwant = singleLayer ? (previewFilter.layer|0) : null;
+  const out = [];
+  let open = false;
+
+  for(const p of path){
+    if(!p){
+      open = false;
+      continue;
+    }
+    let matches = true;
+
+    if(want && want !== "all"){
+      const r = normalizePreviewRole(p.meta?.role || p.role || "", !!p.travel);
+      if(want==="walls") matches = (r==="walls" || r==="wall_outer" || r==="wall_inner");
+      else matches = (r === want);
+    }
+
+    if(matches && singleLayer){
+      matches = inferLayer(p, lh) === Lwant;
+    }
+
+    if(matches){
+      if(!open && out.length) out.push(null);
+      out.push(p);
+      open = true;
+    }else{
+      open = false;
+    }
   }
   return out;
 }

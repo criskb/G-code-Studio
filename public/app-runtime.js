@@ -1824,43 +1824,42 @@ function setPreviewPath(machinePath){
   // machinePath points: {X,Y,z, meta:{role}}
   const gl = preview.gl;
   if(!gl) return;
-  const n = machinePath.length;
+  const pos = [];
+  const col = [];
+  let last = null;
 
-  const pos = new Float32Array(n*3);
-  const col = new Float32Array(n*4);
+  const pushVertex = (pt)=>{
+    const X = pt.X ?? pt.x ?? 0;
+    const Y = pt.Y ?? pt.y ?? 0;
+    const Z = pt.z ?? 0;
+    pos.push(X, Y, Z);
+    const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
+    const rgba = roleToRGBA(role);
+    col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
+  };
 
-  for(let i=0;i<n;i++){
-    const p = machinePath[i];
+  for(const p of machinePath){
     if(!p){
-      pos[i*3+0]=0; pos[i*3+1]=0; pos[i*3+2]=0;
-      col[i*4+0]=0.8; col[i*4+1]=0.8; col[i*4+2]=0.8; col[i*4+3]=0.15;
+      last = null;
       continue;
     }
-    const X = p.X ?? p.x ?? 0;
-    const Y = p.Y ?? p.y ?? 0;
-    const Z = p.z ?? 0;
-    pos[i*3+0]=X;
-    pos[i*3+1]=Y;
-    pos[i*3+2]=Z;
-
-    const role = (p.meta && p.meta.role) ? p.meta.role : (p.role||"");
-    const rgba = roleToRGBA(role);
-    col[i*4+0]=rgba[0];
-    col[i*4+1]=rgba[1];
-    col[i*4+2]=rgba[2];
-    col[i*4+3]=rgba[3];
+    if(last){
+      pushVertex(last);
+      pushVertex(p);
+    }
+    last = p;
   }
 
-  uploadBuffer(preview.buf, pos);
-  uploadBuffer(preview.colBuf, col);
-  preview.counts.path = n;
+  uploadBuffer(preview.buf, new Float32Array(pos));
+  uploadBuffer(preview.colBuf, new Float32Array(col));
+  preview.counts.path = pos.length / 3;
 
   // tool dot at last point
   const tool = new Float32Array(3);
-  if(n){
-    tool[0]=pos[(n-1)*3+0];
-    tool[1]=pos[(n-1)*3+1];
-    tool[2]=pos[(n-1)*3+2];
+  if(last){
+    tool[0]=last.X ?? last.x ?? 0;
+    tool[1]=last.Y ?? last.y ?? 0;
+    tool[2]=last.z ?? 0;
   } else {
     tool[0]=preview.bed.w/2; tool[1]=preview.bed.d/2; tool[2]=0;
   }
@@ -2081,10 +2080,10 @@ if(preview.counts.mesh>1){
   gl.enableVertexAttribArray(preview.aCol);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
   gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINE_STRIP, 0, preview.counts.path);
+  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
 
   setColor(accent, 0.85);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINE_STRIP, 0, preview.counts.path);
+  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
 
   // Tool point
   setColor("rgba(255,255,255,0.9)", 0.9);
@@ -2166,9 +2165,10 @@ function draw2dFallback(machinePath){
   ctx.globalAlpha = 0.25;
   ctx.strokeRect(pad, pad, w-2*pad, h-2*pad);
   ctx.globalAlpha = 1;
-  if(!machinePath.length) return;
-  const xs = machinePath.map(p=>p.X ?? p.x);
-  const ys = machinePath.map(p=>p.Y ?? p.y);
+  const clean = machinePath.filter(Boolean);
+  if(!clean.length) return;
+  const xs = clean.map(p=>p.X ?? p.x);
+  const ys = clean.map(p=>p.Y ?? p.y);
   const minX=Math.min(...xs), maxX=Math.max(...xs);
   const minY=Math.min(...ys), maxY=Math.max(...ys);
   const sx=(w-2*pad)/Math.max(1e-6,(maxX-minX));
@@ -2176,13 +2176,28 @@ function draw2dFallback(machinePath){
   const s=Math.min(sx,sy);
   ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim();
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  for(let i=0;i<machinePath.length;i++){
-    const X = pad + ((xs[i]-minX) * s);
-    const Y = h - (pad + ((ys[i]-minY) * s));
-    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  let drawing = false;
+  let idx = 0;
+  for(const p of machinePath){
+    if(!p){
+      if(drawing){
+        ctx.stroke();
+        drawing = false;
+      }
+      continue;
+    }
+    const X = pad + ((xs[idx]-minX) * s);
+    const Y = h - (pad + ((ys[idx]-minY) * s));
+    idx += 1;
+    if(!drawing){
+      ctx.beginPath();
+      ctx.moveTo(X,Y);
+      drawing = true;
+    }else{
+      ctx.lineTo(X,Y);
+    }
   }
-  ctx.stroke();
+  if(drawing) ctx.stroke();
 }
 
 /* ---------------------------
