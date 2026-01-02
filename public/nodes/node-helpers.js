@@ -58,4 +58,5 @@ export const SCHEMA_NOTE = api.SCHEMA_NOTE;
 export const SCHEMA_PRINTER = api.SCHEMA_PRINTER;
 export const SCHEMA_RULES = api.SCHEMA_RULES;
 export const SCHEMA_SLICER_V2 = api.SCHEMA_SLICER_V2;
+export const SCHEMA_SLICER_CATEGORIES = api.SCHEMA_SLICER_CATEGORIES;
 export const studioDock = api.studioDock;

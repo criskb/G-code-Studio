@@ -21,6 +21,7 @@ const modules = [
   { name: "repeat", load: () => import("./repeat.js") },
   { name: "rules", load: () => import("./rules.js") },
   { name: "slicer", load: () => import("./slicer.js") },
+  { name: "slicer-categories", load: () => import("./slicer-categories.js") },
   { name: "snake-wall", load: () => import("./snake-wall.js") },
   { name: "studio-view", load: () => import("./studio-view.js") },
   { name: "svg-import", load: () => import("./svg-import.js") },
