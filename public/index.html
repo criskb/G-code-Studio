@@ -1526,7 +1526,7 @@ function filterPreviewPath(path){
   return out;
 }
 
-function bindPreviewControls(){
+function bindPreviewFilterControls(){
   if(!prevRoleEl || !prevLayerModeEl || !prevLayerEl) return;
 
   prevRoleEl.value = previewFilter.role;
@@ -8706,8 +8706,9 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(0,0,0,0);
 
-  bindPreviewControls();
+  bindPreviewFilterControls();
   bindPreviewMeshControls();
+  bindPreviewCanvasControls();
   applyPreviewLegendColors();
   preview.ok = true;
   requestAnimationFrame(drawPreviewLoop);
@@ -9014,7 +9015,7 @@ if(mesh && mesh.tris && mesh.tris.length>=9){
   toast("Fit preview");
 }
 
-function bindPreviewControls(){
+function bindPreviewCanvasControls(){
   glCanvas.addEventListener("contextmenu", (e)=>e.preventDefault());
 
   glCanvas.addEventListener("pointerdown", (e)=>{
