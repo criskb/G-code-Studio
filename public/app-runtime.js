@@ -66,7 +66,9 @@ function collectPreviewOutputs(){
   state.outputs.toolpath = toolpath;
 
   if(toolpath){
-    const converted = toolpathToPath(toolpath, {maxMoves:200000});
+    const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+    const prof = printerNode?.data || {bedW:220, bedD:220, origin:"center"};
+    const converted = toolpathToPath(toolpath, {maxMoves:200000, profile: prof});
     state.outputs.path = converted.path;
     state.outputs.previewWarning = converted.warning;
   }else{
@@ -1878,6 +1880,7 @@ function getPreviewColor(pt){
 function toolpathToPath(toolpath, options){
   if(!toolpath || !toolpath.layers) return {path:[], warning:""};
   const maxMoves = options?.maxMoves ?? 200000;
+  const profile = options?.profile || null;
   let moveCount = 0;
   for(const layer of toolpath.layers){ moveCount += (layer.moves||[]).length; }
   const step = moveCount > maxMoves ? Math.ceil(moveCount / maxMoves) : 1;
@@ -1898,12 +1901,13 @@ function toolpathToPath(toolpath, options){
       const x = move.x ?? last?.x ?? 0;
       const y = move.y ?? last?.y ?? 0;
       const z = move.z ?? layerZ ?? last?.z ?? 0;
+      const pos = profile ? toMachineXY(x, y, profile) : {X:x, Y:y};
       const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
       if(!meta.role && meta.feature) meta.role = meta.feature;
       if(meta.layerHeight == null) meta.layerHeight = layerHeight;
       const travel = move.kind === "travel" || meta.feature === "travel";
-      path.push({x,y,z, layer: li, travel, meta, role: meta.role});
-      last = {x,y,z};
+      path.push({x:pos.X, y:pos.Y, z, layer: li, travel, meta, role: meta.role});
+      last = {x, y, z};
     }
   }
   return {path, warning};
@@ -2296,7 +2300,7 @@ if(previewMeshSettings.viewer === "mv"){
   let pathForPreview = (state.outputs.path||[]);
   let warning = "";
   if(previewToolpath){
-    const converted = toolpathToPath(previewToolpath, {maxMoves:200000});
+    const converted = toolpathToPath(previewToolpath, {maxMoves:200000, profile: prof});
     pathForPreview = converted.path;
     warning = converted.warning;
   }
