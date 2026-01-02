@@ -1,7 +1,6 @@
 # G-code Studio Reader
 
 ## Overview
-<<<<<<< HEAD
 G-code Studio is a node-graph workspace for building toolpaths, rules, and printer output in a procedural workflow. It combines a searchable node library, a graph canvas, and a preview panel so you can move from SVG or mesh inputs to G-code exports in one flow.
 =======
 G-code Studio is a node-graph workspace for building toolpaths, rules, and printer output in a FullControl-inspired workflow. It combines a searchable node library, a graph canvas, and a preview panel so you can move from SVG or mesh inputs to G-code exports in one flow.
