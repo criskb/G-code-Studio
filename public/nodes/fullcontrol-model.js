@@ -4,9 +4,9 @@ import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PR
 export default {
   type: 'FullControl Model',
   def: {
-  title:"FullControl Model",
+  title:"Control Experiement",
   tag:"generator",
-  desc:"Procedural FullControl-style designs (inspired by the FullControl online library). Outputs a toolpath directly (no mesh slicing).",
+  desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
   inputs:[{name:"profile", type:"profile"}],
   outputs:[{name:"path", type:"path"}],
   initData:()=>({
