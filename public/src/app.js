@@ -23,7 +23,6 @@ const downloadText = (filename, text)=>{
   a.remove();
   URL.revokeObjectURL(url);
 };
-let NODE_DEFS = {};
 
 const toastEl = document.getElementById("toast");
 function toast(msg, ms=1400){
@@ -3021,7 +3020,7 @@ const lastLayer = layers - 1;
   return out;
 }
 
-NODE_DEFS = {
+const NODE_DEFS = {
   "Path": {
     title: "Path", tag: "generator",
     desc: "Equation / Polar / Spiral. Produces a parametric path.",
