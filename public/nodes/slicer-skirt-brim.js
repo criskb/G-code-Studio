@@ -7,7 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Skirt/Brim'] = {
   tag:"slicer",
   desc:"Skirt and brim generation settings.",
   inputs: [],
-  outputs: [{name:"settings", type:"slicer_settings"}],
+  outputs: [{name:"skirtBrim", type:"slicer_settings"}],
   initData: ()=>({
     skirtLines:0,
     skirtDistance:6,
@@ -15,5 +15,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Skirt/Brim'] = {
     brimLines:0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_SKIRT_BRIM, node, mount),
-  evaluate:(node)=>({ settings: { ...node.data } })
+  evaluate:(node)=>{
+    const settings = { ...node.data };
+    return { settings, skirtBrim: settings };
+  }
 };
