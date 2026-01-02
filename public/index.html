@@ -13,7 +13,7 @@
       <div class="logo" aria-hidden="true"></div>
       <div class="stack">
         <div class="title">G-code Studio</div>
-        <div class="subtitle">FullControl-style node graph • SVG → toolpath • rules → G-code</div>
+        <div class="subtitle">Procedural node graph • SVG → toolpath • rules → G-code</div>
       </div>
     </div>
 
@@ -1578,7 +1578,7 @@ function maybeInjectLayerControls(lines, rules, base, t, z, layer){
   const every = Math.max(1, Math.floor(rules.injectEveryN||1));
   if(layer % every !== 0) return;
 
-  // Filament swaps (HueForge-style: single color per layer range; pause/change at boundaries)
+  // Filament swaps (single color per layer range; pause/change at boundaries)
   if(Array.isArray(rules.filamentChanges) && rules.filamentChanges.length){
     const hit = rules.filamentChanges.find(fc => (fc && Math.floor(fc.layer)===Math.floor(layer)));
     if(hit){
@@ -5014,7 +5014,11 @@ M84`
   }
 }
 ,
+<<<<<<< HEAD
+"Control Experiement":{
+=======
 "FullControl Model":{
+>>>>>>> origin/main
   title:"Control Experiement",
   tag:"generator",
   desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
@@ -5307,7 +5311,7 @@ mount.appendChild(group);
 "Polar Array":{
   title:"Polar Array",
   tag:"modifier",
-  desc:"Replicate a path around a center by polar array (like FullControl polar repeat).",
+  desc:"Replicate a path around a center by polar array.",
   inputs:[{name:"in", type:"path"}],
   outputs:[{name:"out", type:"path"}],
   initData:()=>({
@@ -5473,7 +5477,11 @@ mount.appendChild(group);
   }
 }
 ,
+<<<<<<< HEAD
+"Image":{
+=======
 "Image (HueForge)":{
+>>>>>>> origin/main
   title:"Image",
   tag:"generator",
   desc:"Load an image → generate a heightmap relief (front-lit lithophane style) + optional swap-by-layer filament plan.",
@@ -8945,9 +8953,9 @@ function demoFeaturePaintOptimize(){
 
 
 
-function demoFullControlRipple(){
+function demoControlExperiementRipple(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const z  = addNode("Z Warp", 700, 150);
   const exp= addNode("Export", 990, 120);
@@ -8978,7 +8986,7 @@ function demoFullControlRipple(){
 
 function demoPolarFractions(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const arr= addNode("Polar Array", 460, 160);
   const prn= addNode("Printer", 720, 120);
   const exp= addNode("Export", 1010, 120);
@@ -9011,7 +9019,7 @@ function demoPolarFractions(){
 
 function demoPinSupport(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9081,9 +9089,9 @@ function demoZWarp(){
 }
 
 
-function demoFullControlNonplanarSpacer(){
+function demoControlExperiementNonplanarSpacer(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9156,7 +9164,7 @@ function demoCalibrationTower(){
 
 function demoWeaveVase(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const weave = addNode("Weave Offset", 460, 160);
   const prn= addNode("Printer", 720, 120);
   const exp= addNode("Export", 1010, 120);
@@ -9186,7 +9194,7 @@ function demoWeaveVase(){
 
 function demoThreadedTube(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9243,9 +9251,9 @@ function demoSnakeFill(){
 }
 
 
-function demoHueforgeImage(){
+function demoImageRelief(){
   state = defaultState();
-  const img = addNode("Image (HueForge)", 120, 140);
+  const img = addNode("Image", 120, 140);
   const slic= addNode("Slicer", 470, 140);
   const prn = addNode("Printer", 780, 120);
   const exp = addNode("Export", 1040, 120);
@@ -9264,7 +9272,7 @@ function demoHueforgeImage(){
   ctx.beginPath(); ctx.arc(c.width*0.68, c.height*0.52, 42, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(0,0,0,0.25)";
   ctx.font="bold 28px ui-sans-serif";
-  ctx.fillText("HF", 22, 44);
+  ctx.fillText("IR", 22, 44);
 
   state.nodes[img].data.imgB64 = c.toDataURL("image/png");
   state.nodes[img].data.widthMM = 120;
@@ -9304,14 +9312,22 @@ function demoHueforgeImage(){
 }
 
 const DEMOS = [
+<<<<<<< HEAD
+  { id:"image_relief", name:"Demo: Image Relief (swaps)", build: demoImageRelief },
+  { id:"woven_vase", name:"Demo: Woven Vase (Weave Offset)", build: demoWeaveVase },
+  { id:"thread_tube", name:"Demo: Threaded Tube", build: demoThreadedTube },
+  { id:"snake_fill", name:"Demo: Snake Mode Fill", build: demoSnakeFill },
+  { id:"ctrl_ripple", name:"Demo: Control Experiement Ripple Vase", build: demoControlExperiementRipple },
+=======
   { id:"hueforge_img", name:"Demo: Image Relief (swaps)", build: demoHueforgeImage },
   { id:"woven_vase", name:"Demo: Woven Vase (Weave Offset)", build: demoWeaveVase },
   { id:"thread_tube", name:"Demo: Threaded Tube", build: demoThreadedTube },
   { id:"snake_fill", name:"Demo: Snake Mode Fill", build: demoSnakeFill },
   { id:"fc_ripple", name:"Demo: Control Experiement Ripple Vase", build: demoFullControlRipple },
+>>>>>>> origin/main
   { id:"fc_polar", name:"Demo: Fractional Engine (Polar)", build: demoPolarFractions },
   { id:"fc_pin", name:"Demo: Pin Support Challenge", build: demoPinSupport },
-  { id:"fc_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoFullControlNonplanarSpacer },
+  { id:"ctrl_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoControlExperiementNonplanarSpacer },
   { id:"z_warp", name:"Demo: Z Warp (Non-Planar Finish)", build: demoZWarp },
   { id:"cal_tower", name:"Demo: Calibration Tower (Temp steps)", build: demoCalibrationTower },
   { id:"feature_paint_opt", name:"Demo: Feature Paint + Travel Optimize (Orca-ish)", build: demoFeaturePaintOptimize },

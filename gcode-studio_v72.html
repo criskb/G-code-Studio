@@ -904,7 +904,7 @@ body.light .toggle .knob{
 .smallBtn{ padding:6px 10px; border-radius:10px; }
 
 
-/* HueForge image node */
+/* Image node */
 .imgNodePreview{ width:100%; border:1px solid var(--stroke); border-radius:14px; overflow:hidden; background:rgba(255,255,255,0.03); }
 .imgNodePreview canvas{ width:100%; height:auto; display:block; }
 .paletteRow{ display:grid; grid-template-columns: 1fr 90px 32px; gap:8px; align-items:center; }
@@ -919,7 +919,7 @@ body.light .toggle .knob{
       <div class="logo" aria-hidden="true"></div>
       <div class="stack">
         <div class="title">G-code Studio</div>
-        <div class="subtitle">FullControl-style node graph • SVG → toolpath • rules → G-code</div>
+        <div class="subtitle">Procedural node graph • SVG → toolpath • rules → G-code</div>
       </div>
     </div>
 
@@ -2400,7 +2400,7 @@ function maybeInjectLayerControls(lines, rules, base, t, z, layer){
   const every = Math.max(1, Math.floor(rules.injectEveryN||1));
   if(layer % every !== 0) return;
 
-  // Filament swaps (HueForge-style: single color per layer range; pause/change at boundaries)
+  // Filament swaps (single color per layer range; pause/change at boundaries)
   if(Array.isArray(rules.filamentChanges) && rules.filamentChanges.length){
     const hit = rules.filamentChanges.find(fc => (fc && Math.floor(fc.layer)===Math.floor(layer)));
     if(hit){
@@ -5836,10 +5836,10 @@ M84`
   }
 }
 ,
-"FullControl Model":{
-  title:"FullControl Model",
+"Control Experiement":{
+  title:"Control Experiement",
   tag:"generator",
-  desc:"Procedural FullControl-style designs (inspired by the FullControl online library). Outputs a toolpath directly (no mesh slicing).",
+  desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
   inputs:[{name:"profile", type:"profile"}],
   outputs:[{name:"path", type:"path"}],
   initData:()=>({
@@ -6129,7 +6129,7 @@ mount.appendChild(group);
 "Polar Array":{
   title:"Polar Array",
   tag:"modifier",
-  desc:"Replicate a path around a center by polar array (like FullControl polar repeat).",
+  desc:"Replicate a path around a center by polar array.",
   inputs:[{name:"in", type:"path"}],
   outputs:[{name:"out", type:"path"}],
   initData:()=>({
@@ -6295,8 +6295,8 @@ mount.appendChild(group);
   }
 }
 ,
-"Image (HueForge)":{
-  title:"Image (HueForge)",
+"Image":{
+  title:"Image",
   tag:"generator",
   desc:"Load an image → generate a heightmap relief (front-lit lithophane style) + optional swap-by-layer filament plan.",
   inputs:[{name:"profile", type:"profile"}],
@@ -6397,7 +6397,7 @@ mount.appendChild(group);
       }else{
         ctx.fillStyle="rgba(255,255,255,0.15)";
         ctx.font="12px ui-sans-serif";
-        ctx.fillText("Load an image to generate a HueForge-style relief mesh.", 14, 26);
+        ctx.fillText("Load an image to generate a relief mesh.", 14, 26);
       }
     };
 
@@ -6504,7 +6504,7 @@ mount.appendChild(group);
     tip.innerHTML =
       "<b style='color:var(--text)'>How it works</b>"+
       "<div>This node builds a relief mesh from your image (thickness varies by brightness). Then it can output a swap-by-layer plan (single color per layer range).</div>"+
-      "<div class='muted'>This is an approximation of HueForge-style filament painting; you can refine stops + palette by test prints.</div>";
+      "<div class='muted'>This is an approximation of filament painting; you can refine stops + palette by test prints.</div>";
     mount.appendChild(tip);
 
     // helpers used above
@@ -9724,9 +9724,9 @@ function demoFeaturePaintOptimize(){
 
 
 
-function demoFullControlRipple(){
+function demoControlExperiementRipple(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const z  = addNode("Z Warp", 700, 150);
   const exp= addNode("Export", 990, 120);
@@ -9741,9 +9741,9 @@ function demoFullControlRipple(){
   state.nodes[z].data.amplitude=0.7;
   state.nodes[z].data.wavelength=26;
 
-  state.nodes[note].data.title="Demo: FullControl Ripple Vase (+ optional non-planar)";
+  state.nodes[note].data.title="Demo: Control Experiement Ripple Vase (+ optional non-planar)";
   state.nodes[note].data.text =
-`This is a **path-first** model (no mesh slicing).\n\nGraph:\nFullControl Model → (optional) Z Warp → Printer → Export\n\nTry:\n- Increase ripples for tighter texture\n- Use Z Warp for non-planar wave finish (small amplitude)\n`;
+`This is a **path-first** model (no mesh slicing).\n\nGraph:\nControl Experiement → (optional) Z Warp → Printer → Export\n\nTry:\n- Increase ripples for tighter texture\n- Use Z Warp for non-planar wave finish (small amplitude)\n`;
 
   connect(fc, 0, z, 0);
   connect(z, 0, exp, 0);
@@ -9751,13 +9751,13 @@ function demoFullControlRipple(){
 
   selectNode(fc);
   centerViewOn(fc);
-  toast("Loaded demo: FullControl Ripple Vase");
+  toast("Loaded demo: Control Experiement Ripple Vase");
   markDirtyAuto();
 }
 
 function demoPolarFractions(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const arr= addNode("Polar Array", 460, 160);
   const prn= addNode("Printer", 720, 120);
   const exp= addNode("Export", 1010, 120);
@@ -9776,7 +9776,7 @@ function demoPolarFractions(){
 
   state.nodes[note].data.title="Demo: Fractional Engine (Polar)";
   state.nodes[note].data.text =
-`Inspired by FullControl's polar/fractional demos.\n\nGraph:\nFullControl Model → Polar Array → Printer → Export\n\nTry:\n- denom 7 / numer 3 for different rhythms\n- copies 2–8 for kaleidoscope patterns\n`;
+`Inspired by polar/fractional demos.\n\nGraph:\nControl Experiement → Polar Array → Printer → Export\n\nTry:\n- denom 7 / numer 3 for different rhythms\n- copies 2–8 for kaleidoscope patterns\n`;
 
   connect(fc, 0, arr, 0);
   connect(arr,0, exp, 0);
@@ -9790,7 +9790,7 @@ function demoPolarFractions(){
 
 function demoPinSupport(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9860,9 +9860,9 @@ function demoZWarp(){
 }
 
 
-function demoFullControlNonplanarSpacer(){
+function demoControlExperiementNonplanarSpacer(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9877,7 +9877,7 @@ function demoFullControlNonplanarSpacer(){
 
   state.nodes[note].data.title="Demo: Nonplanar Spacer (wavy ring)";
   state.nodes[note].data.text =
-`A simple ring spacer with a wavy/nonplanar outer wall.\n\nGraph:\nFullControl Model → Printer → Export\n\nTip:\n- Start with small wave amp (0.3–1.0mm)\n- Strong cooling helps on wavy Z\n`;
+`A simple ring spacer with a wavy/nonplanar outer wall.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Start with small wave amp (0.3–1.0mm)\n- Strong cooling helps on wavy Z\n`;
 
   connect(fc,0, exp,0);
   connect(prn,0, exp,1);
@@ -9935,7 +9935,7 @@ function demoCalibrationTower(){
 
 function demoWeaveVase(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const weave = addNode("Weave Offset", 460, 160);
   const prn= addNode("Printer", 720, 120);
   const exp= addNode("Export", 1010, 120);
@@ -9951,7 +9951,7 @@ function demoWeaveVase(){
 
   state.nodes[note].data.title="Demo: Woven Vase (Weave Offset)";
   state.nodes[note].data.text =
-`Add a weaving look by offsetting points along the path normal.\n\nGraph:\nFullControl Model → Weave Offset → Printer → Export\n\nTry:\n- amp 0.3–1.2\n- freq 5–14\n`;
+`Add a weaving look by offsetting points along the path normal.\n\nGraph:\nControl Experiement → Weave Offset → Printer → Export\n\nTry:\n- amp 0.3–1.2\n- freq 5–14\n`;
 
   connect(fc,0, weave,0);
   connect(weave,0, exp,0);
@@ -9965,7 +9965,7 @@ function demoWeaveVase(){
 
 function demoThreadedTube(){
   state = defaultState();
-  const fc = addNode("FullControl Model", 120, 140);
+  const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
   const note=addNode("Note", 120, 470);
@@ -9980,7 +9980,7 @@ function demoThreadedTube(){
 
   state.nodes[note].data.title="Demo: Threaded Tube (path-first)";
   state.nodes[note].data.text =
-`Inspired by FullControl-style threaded tubes. This is a simplified external thread.\n\nGraph:\nFullControl Model → Printer → Export\n\nTip:\n- Increase depth carefully (risk of collisions)\n`;
+`Inspired by threaded tube studies. This is a simplified external thread.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Increase depth carefully (risk of collisions)\n`;
 
   connect(fc,0, exp,0);
   connect(prn,0, exp,1);
@@ -10022,9 +10022,9 @@ function demoSnakeFill(){
 }
 
 
-function demoHueforgeImage(){
+function demoImageRelief(){
   state = defaultState();
-  const img = addNode("Image (HueForge)", 120, 140);
+  const img = addNode("Image", 120, 140);
   const slic= addNode("Slicer", 470, 140);
   const prn = addNode("Printer", 780, 120);
   const exp = addNode("Export", 1040, 120);
@@ -10043,7 +10043,7 @@ function demoHueforgeImage(){
   ctx.beginPath(); ctx.arc(c.width*0.68, c.height*0.52, 42, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(0,0,0,0.25)";
   ctx.font="bold 28px ui-sans-serif";
-  ctx.fillText("HF", 22, 44);
+  ctx.fillText("IR", 22, 44);
 
   state.nodes[img].data.imgB64 = c.toDataURL("image/png");
   state.nodes[img].data.widthMM = 120;
@@ -10067,9 +10067,9 @@ function demoHueforgeImage(){
   state.nodes[slic].data.topLayers=0;
   state.nodes[slic].data.bottomLayers=0;
 
-  state.nodes[note].data.title="Demo: HueForge Image (relief + filament swaps)";
+  state.nodes[note].data.title="Demo: Image Relief (filament swaps)";
   state.nodes[note].data.text =
-`This demo uses the Image (HueForge) node.\n\nGraph:\nImage (HueForge) → Slicer → Export\n\n- The image becomes a relief mesh (thickness varies by brightness)\n- Stops define swap-by-layer changes (M600 by default)\n\nTry:\n- tweak gamma / thickness range\n- adjust stops (layer → palette index)\n`;
+`This demo uses the Image node.\n\nGraph:\nImage → Slicer → Export\n\n- The image becomes a relief mesh (thickness varies by brightness)\n- Stops define swap-by-layer changes (M600 by default)\n\nTry:\n- tweak gamma / thickness range\n- adjust stops (layer → palette index)\n`;
 
   connect(img, 0, slic, 0);     // mesh
   connect(img, 1, exp, 1);      // rules
@@ -10078,19 +10078,19 @@ function demoHueforgeImage(){
 
   selectNode(img);
   centerViewOn(img);
-  toast("Loaded demo: HueForge Image");
+  toast("Loaded demo: Image Relief");
   markDirtyAuto();
 }
 
 const DEMOS = [
-  { id:"hueforge_img", name:"Demo: HueForge Image (relief + swaps)", build: demoHueforgeImage },
+  { id:"image_relief", name:"Demo: Image Relief (swaps)", build: demoImageRelief },
   { id:"woven_vase", name:"Demo: Woven Vase (Weave Offset)", build: demoWeaveVase },
   { id:"thread_tube", name:"Demo: Threaded Tube", build: demoThreadedTube },
   { id:"snake_fill", name:"Demo: Snake Mode Fill", build: demoSnakeFill },
-  { id:"fc_ripple", name:"Demo: FullControl Ripple Vase", build: demoFullControlRipple },
+  { id:"ctrl_ripple", name:"Demo: Control Experiement Ripple Vase", build: demoControlExperiementRipple },
   { id:"fc_polar", name:"Demo: Fractional Engine (Polar)", build: demoPolarFractions },
   { id:"fc_pin", name:"Demo: Pin Support Challenge", build: demoPinSupport },
-  { id:"fc_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoFullControlNonplanarSpacer },
+  { id:"ctrl_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoControlExperiementNonplanarSpacer },
   { id:"z_warp", name:"Demo: Z Warp (Non-Planar Finish)", build: demoZWarp },
   { id:"cal_tower", name:"Demo: Calibration Tower (Temp steps)", build: demoCalibrationTower },
   { id:"feature_paint_opt", name:"Demo: Feature Paint + Travel Optimize (Orca-ish)", build: demoFeaturePaintOptimize },
@@ -10904,4 +10904,3 @@ graphWrap.addEventListener("contextmenu", (e)=> e.preventDefault());
 
 </body>
 </html>
-

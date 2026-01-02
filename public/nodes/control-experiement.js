@@ -2,7 +2,7 @@ import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PR
   rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
 
 export default {
-  type: 'FullControl Model',
+  type: 'Control Experiement',
   def: {
   title:"Control Experiement",
   tag:"generator",

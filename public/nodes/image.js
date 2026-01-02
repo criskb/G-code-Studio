@@ -2,7 +2,7 @@ import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PR
   rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
 
 export default {
-  type: 'Image (HueForge)',
+  type: 'Image',
   def: {
   title:"Image",
   tag:"generator",
