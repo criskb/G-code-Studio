@@ -176,6 +176,7 @@ function computeLayerBounds(path){
 }
 
 function updatePreviewControlsFromPath(path){
+  if(!prevLayerEl || !prevLayerValEl) return;
   const b = computeLayerBounds(path);
   previewFilter.maxLayer = b.maxLayer;
   previewFilter.layerHeight = b.layerHeight;
@@ -195,30 +196,60 @@ function updatePreviewLayerLabel(){
   }
 }
 
+function normalizePreviewRole(role, travel){
+  if(travel) return "travel";
+  const r = String(role || "").toLowerCase();
+  if(!r) return "";
+  if(r === "inner_wall") return "wall_inner";
+  if(r === "outer_wall") return "wall_outer";
+  if(r === "wall") return "walls";
+  if(r === "perimeter") return "walls";
+  if(r === "perimeters") return "walls";
+  return r;
+}
+
 function filterPreviewPath(path){
   if(!path || !path.length) return path || [];
-  let out = path;
-
-  // Role filter (supports grouped walls)
   const want = previewFilter.role;
-  if(want && want !== "all"){
-    out = out.filter(p=>{
-      const r = (p.meta?.role || p.role || "").toString();
-      if(want==="walls") return (r==="walls" || r==="wall_outer" || r==="wall_inner");
-      return r === want;
-    });
-  }
+  const singleLayer = previewFilter.layerMode === "single";
+  const filtering = (want && want !== "all") || singleLayer;
+  if(!filtering) return path;
 
-  // Layer filter
-  if(previewFilter.layerMode === "single"){
-    const lh = previewFilter.layerHeight || (pickLayerHeight(path, null) || 0.2);
-    const Lwant = previewFilter.layer|0;
-    out = out.filter(p=> inferLayer(p, lh) === Lwant);
+  const lh = singleLayer ? (previewFilter.layerHeight || (pickLayerHeight(path, null) || 0.2)) : null;
+  const Lwant = singleLayer ? (previewFilter.layer|0) : null;
+  const out = [];
+  let open = false;
+
+  for(const p of path){
+    if(!p){
+      open = false;
+      continue;
+    }
+    let matches = true;
+
+    if(want && want !== "all"){
+      const r = normalizePreviewRole(p.meta?.role || p.role || "", !!p.travel);
+      if(want==="walls") matches = (r==="walls" || r==="wall_outer" || r==="wall_inner");
+      else matches = (r === want);
+    }
+
+    if(matches && singleLayer){
+      matches = inferLayer(p, lh) === Lwant;
+    }
+
+    if(matches){
+      if(!open && out.length) out.push(null);
+      out.push(p);
+      open = true;
+    }else{
+      open = false;
+    }
   }
   return out;
 }
 
 function bindPreviewControls(){
+  if(bindPreviewControls.bound) return;
   if(!prevRoleEl || !prevLayerModeEl || !prevLayerEl) return;
 
   prevRoleEl.value = previewFilter.role;
@@ -240,7 +271,9 @@ function bindPreviewControls(){
     updatePreviewLayerLabel();
     schedulePreviewUpdate();
   });
+  bindPreviewControls.bound = true;
 }
+bindPreviewControls.bound = false;
 
 const prevMeshRenderEl = document.getElementById("prevMeshRender");
 const prevMeshAlphaEl = document.getElementById("prevMeshAlpha");
@@ -280,6 +313,17 @@ function setViewerMode(mode){
 }
 
 function bindPreviewMeshControls(){
+  if(bindPreviewMeshControls.bound) return;
+  if(prevViewerEl && !customElements.get("model-viewer")){
+    const mvOption = prevViewerEl.querySelector('option[value="mv"]');
+    if(mvOption){
+      mvOption.disabled = true;
+      mvOption.textContent = "Model-Viewer (offline)";
+    }
+    if(previewMeshSettings.viewer === "mv"){
+      previewMeshSettings.viewer = "gl";
+    }
+  }
   if(prevMeshRenderEl){
     prevMeshRenderEl.value = previewMeshSettings.render;
     prevMeshRenderEl.addEventListener("change", ()=>{
@@ -312,7 +356,9 @@ function bindPreviewMeshControls(){
       schedulePreviewUpdate();
     });
   }
+  bindPreviewMeshControls.bound = true;
 }
+bindPreviewMeshControls.bound = false;
 
 
 
@@ -1280,14 +1326,30 @@ const roleFlowDefault = (role)=> {
   return 1.0;
 };
 
-const rules = rulesBundle || {
+const rules = {
     layerHeightHint: layerHDefault,
     injectEveryN: 1,
     speedFn: (t,i,n,x,y,z,layer,role)=> roleSpeedDefault(role, layer),
     flowFn: ()=> 1,
-    enableTemp:false, tempFn:null,
-    enableFan:false, fanFn:null
+    enableTemp:false,
+    tempFn:null,
+    enableFan:false,
+    fanFn:null,
+    filamentChanges: null,
+    filamentCmd: null
   };
+  if(rulesBundle && typeof rulesBundle === "object"){
+    if(typeof rulesBundle.speedFn === "function") rules.speedFn = rulesBundle.speedFn;
+    if(typeof rulesBundle.flowFn === "function") rules.flowFn = rulesBundle.flowFn;
+    if(typeof rulesBundle.tempFn === "function") rules.tempFn = rulesBundle.tempFn;
+    if(typeof rulesBundle.fanFn === "function") rules.fanFn = rulesBundle.fanFn;
+    if(typeof rulesBundle.layerHeightHint === "number") rules.layerHeightHint = rulesBundle.layerHeightHint;
+    if(typeof rulesBundle.injectEveryN === "number") rules.injectEveryN = rulesBundle.injectEveryN;
+    if(typeof rulesBundle.enableTemp === "boolean") rules.enableTemp = rulesBundle.enableTemp;
+    if(typeof rulesBundle.enableFan === "boolean") rules.enableFan = rulesBundle.enableFan;
+    if(Array.isArray(rulesBundle.filamentChanges)) rules.filamentChanges = rulesBundle.filamentChanges;
+    if(typeof rulesBundle.filamentCmd === "string") rules.filamentCmd = rulesBundle.filamentCmd;
+  }
 
   const lines=[];
   const nl = ()=>lines.push("");
@@ -1862,6 +1924,18 @@ async function unzipArrayBuffer(ab){
    - Supports: .orca_printer, .orca_filament, .zip (Orca config bundles), and raw .json.
 ---------------------------- */
 function ensureOrcaStore(){
+  if(!ensureOrcaStore.loaded){
+    ensureOrcaStore.loaded = true;
+    try{
+      const raw = localStorage.getItem("gcodeStudio_orcaProfiles_v1");
+      if(raw){
+        const obj = JSON.parse(raw);
+        if(obj && typeof obj === "object"){
+          state.orca = { printers:[], filaments:[], processes:[], files:{}, lastImported:"", ...obj };
+        }
+      }
+    }catch(_){}
+  }
   if(!state.orca) state.orca = { printers:[], filaments:[], processes:[], files:{}, lastImported:"" };
   if(!state.orca.files || typeof state.orca.files!=="object") state.orca.files = {};
   state.orca.printers  = Array.isArray(state.orca.printers)  ? state.orca.printers  : [];
@@ -1869,6 +1943,7 @@ function ensureOrcaStore(){
   state.orca.processes = Array.isArray(state.orca.processes) ? state.orca.processes : [];
   return state.orca;
 }
+ensureOrcaStore.loaded = false;
 
 function orcaFirst(list, id){
   if(!Array.isArray(list) || !list.length) return null;
@@ -1944,6 +2019,8 @@ async function importOrcaFilesFromInput(fileList){
   setStatus("Importing Orca presets…");
   try{
     for(const f of files) await importOrcaFile(f);
+    try{ localStorage.setItem("gcodeStudio_orcaProfiles_v1", JSON.stringify(orca)); }catch(_){}
+    try{ if(typeof saveState === "function") saveState(); }catch(_){}
     setStatus(`Imported Orca presets • printers:${orca.printers.length} filaments:${orca.filaments.length} processes:${orca.processes.length}`);
     toast("Orca presets imported");
   }catch(e){

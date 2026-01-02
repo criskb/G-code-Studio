@@ -1,0 +1,261 @@
+{
+  "ui": {
+    "theme": "dark",
+    "autoRun": true,
+    "panX": 60,
+    "panY": 80,
+    "zoom": 1.0,
+    "selectedNodeId": "export1"
+  },
+  "params": [
+    {
+      "k": "pi",
+      "v": "3.141592653589793",
+      "locked": true
+    },
+    {
+      "k": "tau",
+      "v": "6.283185307179586",
+      "locked": true
+    },
+    {
+      "k": "A",
+      "v": "50"
+    },
+    {
+      "k": "B",
+      "v": "10"
+    },
+    {
+      "k": "C",
+      "v": "6"
+    }
+  ],
+  "orca": {
+    "printers": [],
+    "filaments": [],
+    "processes": [],
+    "files": {},
+    "lastImported": ""
+  },
+  "outputs": {
+    "gcode": "",
+    "path": [],
+    "mesh": null,
+    "stats": {
+      "points": 0,
+      "length": 0,
+      "e": 0,
+      "timeMin": 0
+    }
+  },
+  "nodes": {
+    "mesh1": {
+      "id": "mesh1",
+      "type": "Mesh Primitive",
+      "x": 80,
+      "y": 120,
+      "w": 360,
+      "h": 520,
+      "data": {
+        "kind": "cube",
+        "size": 80,
+        "height": 40,
+        "seg": 40,
+        "waveAmp": 8,
+        "waveFreq": 3,
+        "bedAlign": true,
+        "previewMode": "wireframe"
+      }
+    },
+    "slicer1": {
+      "id": "slicer1",
+      "type": "Slicer",
+      "x": 470,
+      "y": 140,
+      "w": 360,
+      "h": 460,
+      "data": {
+        "bedAlign": true,
+        "mode": "planar",
+        "originMode": "from_printer",
+        "scale": 1,
+        "rotZ": 0,
+        "zOffset": 0
+      }
+    },
+    "paint1": {
+      "id": "paint1",
+      "type": "Feature Paint",
+      "x": 850,
+      "y": 160,
+      "w": 420,
+      "h": 360,
+      "data": {
+        "rules": [
+          {
+            "name": "Slow outer walls",
+            "when": "role==\"walls\" || role==\"outer_wall\"",
+            "role": "",
+            "speedMode": "mul",
+            "speedVal": 0.75,
+            "flowMode": "mul",
+            "flowVal": 1.0
+          },
+          {
+            "name": "Boost top skins",
+            "when": "role==\"top\"",
+            "role": "",
+            "speedMode": "mul",
+            "speedVal": 0.7,
+            "flowMode": "mul",
+            "flowVal": 1.05
+          },
+          {
+            "name": "Fast infill",
+            "when": "role==\"infill\"",
+            "role": "",
+            "speedMode": "mul",
+            "speedVal": 1.2,
+            "flowMode": "mul",
+            "flowVal": 1.0
+          }
+        ],
+        "applyToTravel": true
+      }
+    },
+    "opt1": {
+      "id": "opt1",
+      "type": "Travel Optimize",
+      "x": 1300,
+      "y": 180,
+      "w": 300,
+      "h": 220,
+      "data": {
+        "perLayer": true,
+        "keepFirst": true
+      }
+    },
+    "printer1": {
+      "id": "printer1",
+      "type": "Printer",
+      "x": 470,
+      "y": 630,
+      "w": 360,
+      "h": 320,
+      "data": {
+        "name": "Generic FDM",
+        "bedW": 220,
+        "bedD": 220,
+        "bedH": 250,
+        "origin": "center",
+        "offsetX": 0,
+        "offsetY": 0,
+        "travelZ": 5,
+        "nozzle": 0.4,
+        "lineWidth": 0.45,
+        "filamentDia": 1.75,
+        "extrusionMult": 1.0,
+        "tempNozzle": 210,
+        "tempBed": 60,
+        "speedPrint": 1800,
+        "speedTravel": 6000,
+        "startGcode": "M104 S210\nM140 S60\nG28\nG92 E0",
+        "endGcode": "M104 S0\nM140 S0\nG28 X0\nM84"
+      }
+    },
+    "export1": {
+      "id": "export1",
+      "type": "Export",
+      "x": 1650,
+      "y": 240,
+      "w": 340,
+      "h": 260,
+      "data": {
+        "addLayerComments": true,
+        "capPreviewChars": 200000,
+        "fileName": "workflow_feature_paint_opt"
+      }
+    }
+  },
+  "links": [
+    {
+      "id": "link1",
+      "from": {
+        "node": "mesh1",
+        "port": "mesh",
+        "type": "mesh"
+      },
+      "to": {
+        "node": "slicer1",
+        "port": "mesh",
+        "type": "mesh"
+      }
+    },
+    {
+      "id": "link2",
+      "from": {
+        "node": "slicer1",
+        "port": "path",
+        "type": "path"
+      },
+      "to": {
+        "node": "paint1",
+        "port": "in",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link3",
+      "from": {
+        "node": "paint1",
+        "port": "out",
+        "type": "path"
+      },
+      "to": {
+        "node": "opt1",
+        "port": "in",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link4",
+      "from": {
+        "node": "opt1",
+        "port": "out",
+        "type": "path"
+      },
+      "to": {
+        "node": "export1",
+        "port": "path",
+        "type": "path"
+      }
+    },
+    {
+      "id": "link5",
+      "from": {
+        "node": "slicer1",
+        "port": "mesh",
+        "type": "mesh"
+      },
+      "to": {
+        "node": "export1",
+        "port": "mesh",
+        "type": "mesh"
+      }
+    },
+    {
+      "id": "link6",
+      "from": {
+        "node": "printer1",
+        "port": "profile",
+        "type": "profile"
+      },
+      "to": {
+        "node": "export1",
+        "port": "profile",
+        "type": "profile"
+      }
+    }
+  ]
+}
