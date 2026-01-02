@@ -268,7 +268,7 @@
     }
     .node{
       position:absolute;
-      width: 320px;
+      width: 460px;
       min-height: 140px;
       border-radius: 16px;
       border:1px solid var(--stroke);
@@ -325,10 +325,10 @@
     .nodeBtn:hover{ border-color:rgba(255,255,255,0.22); }
     [data-theme="light"] .nodeBtn:hover{ border-color:rgba(20,30,40,0.22); }
     .nodeBody{
-  padding:8px;
+  padding:2px;
   display:grid;
-  grid-template-columns: 96px 1fr 96px;
-  gap:8px;
+  grid-template-columns: 72px 1fr 72px;
+  gap:2px;
   min-height:0;
   overflow:auto;
   position:relative;
@@ -336,15 +336,15 @@
 .portsLeft{
   display:flex;
   flex-direction:column;
-  gap:8px;
-  padding-top:2px;
+  gap:2px;
+  padding-top:0;
   min-width:0;
 }
 .portsRight{
   display:flex;
   flex-direction:column;
-  gap:8px;
-  padding-top:2px;
+  gap:2px;
+  padding-top:0;
   align-items:flex-end;
   min-width:0;
 }
