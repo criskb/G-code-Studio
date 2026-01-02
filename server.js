@@ -1,0 +1,101 @@
+import { createServer } from "node:http";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicRoot = path.join(__dirname, "public");
+const nodesRoot = path.join(publicRoot, "nodes");
+
+const mimeTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp"
+};
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload, null, 2));
+}
+
+async function handleApi(req, res) {
+  if (req.url === "/api/nodes") {
+    try {
+      const entries = await fs.readdir(nodesRoot, { withFileTypes: true });
+      const nodes = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
+        .filter((entry) => entry.name !== "node-helpers.js")
+        .map((entry) => entry.name)
+        .sort((a, b) => a.localeCompare(b))
+        .map((file) => {
+          const name = file.replace(/\.js$/, "");
+          return {
+            name,
+            module: `/nodes/${file}`
+          };
+        });
+      return sendJson(res, 200, { nodes });
+    } catch (error) {
+      return sendJson(res, 500, { error: error.message || String(error) });
+    }
+  }
+
+  return sendJson(res, 404, { error: "Not found" });
+}
+
+async function serveStatic(req, res) {
+  const urlPath = req.url.split("?")[0];
+  const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
+  const filePath = path.join(publicRoot, safePath === "/" ? "/index.html" : safePath);
+
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.isDirectory()) {
+      const indexPath = path.join(filePath, "index.html");
+      const indexStat = await fs.stat(indexPath);
+      if (indexStat.isFile()) {
+        const data = await fs.readFile(indexPath);
+        const ext = path.extname(indexPath);
+        res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
+        res.end(data);
+        return;
+      }
+    }
+    if (!stat.isFile()) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    const data = await fs.readFile(filePath);
+    const ext = path.extname(filePath);
+    res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
+    res.end(data);
+  } catch {
+    res.writeHead(404);
+    res.end("Not found");
+  }
+}
+
+const server = createServer(async (req, res) => {
+  if (!req.url) {
+    res.writeHead(400);
+    res.end("Bad request");
+    return;
+  }
+  if (req.url.startsWith("/api/")) {
+    await handleApi(req, res);
+    return;
+  }
+  await serveStatic(req, res);
+});
+
+const port = process.env.PORT ? Number(process.env.PORT) : 5174;
+server.listen(port, "0.0.0.0", () => {
+  console.log(`G-code Studio running at http://localhost:${port}`);
+});
