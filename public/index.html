@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>G-code Studio — Node Graph v69 v7</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <link rel="stylesheet" href="/styles.css"/>
+</head>
+<body data-theme="dark">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="stack">
+        <div class="title">G-code Studio</div>
+        <div class="subtitle">FullControl-style node graph • SVG → toolpath • rules → G-code</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <span class="pill" id="statusPill">Booting…</span>
+      <span class="pill" id="zoomPill">Zoom 100%</span>
+<div class="dropdown" id="demoDropdown">
+  <button class="btn" id="btnDemo" title="Load a demo graph">Load demo ▾</button>
+  <div class="menu" id="demoMenu" role="menu" aria-label="Demos"></div>
+</div>
+
+      <button class="btn" id="btnSettings" title="Settings">Settings</button>
+      <button class="btn" id="btnTheme">Toggle theme</button>
+      <button class="btn" id="btnFit">Fit view</button>
+      <button class="btn" id="btnCenter">Center graph</button>
+      <button class="btn" id="btnAddNode" title="Add node (Space)">Add node</button>
+      <button class="btn" id="btnAuto">Auto: ON</button>
+      <button class="btn primary" id="btnRun">Run graph</button>
+      <button class="btn primary" id="btnDownload">Download .gcode</button>
+      <button class="btn" id="btnSave">Export JSON</button>
+      <button class="btn" id="btnLoad">Import JSON</button>
+      <input id="fileLoad" type="file" accept="application/json" style="display:none"/>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- Left: Library + Params -->
+    <div class="panel left">
+      <div class="head">
+        <div class="h">
+          <div class="t">Node Library</div>
+          <div class="d">Add nodes, wire: Path → Modifiers → Rules → Printer → Export.</div>
+        </div>
+        <button class="btn" id="btnNew">New</button>
+      </div>
+      <div class="body">
+        <div class="searchWrap">
+          <input id="nodeSearch" placeholder="Search nodes (e.g. svg, transform, rules)"/>
+          <button class="btn" id="btnAddQuick">Add</button>
+        </div>
+        <div class="nodeList" id="nodeList"></div>
+
+        <div class="divider"></div>
+
+        <div class="hint">
+          <div style="margin-bottom:6px"><b style="color:var(--text)">Global Params</b> (usable in expressions)</div>
+          <div>Use <code>t</code>, <code>i</code>, <code>n</code>, <code>z</code>, <code>layer</code>, and params like <code>A</code>, <code>B</code>.</div>
+        </div>
+
+        <div style="margin-top:10px" id="paramEditor"></div>
+
+        <div class="divider"></div>
+
+        <div class="hint">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <span><b style="color:var(--text)">Graph controls:</b></span>
+            <span class="kbd">Wheel</span> Zoom
+            <span class="kbd">Middle Drag</span> Pan
+            <span class="kbd">Space + Drag</span> Pan
+            <span class="kbd">Del</span> Delete node
+            <span class="kbd">G</span> Run
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Graph -->
+    <div class="panel center">
+      <div class="graphWrap" id="graphWrap" tabindex="0">
+        <div class="toast" id="toast"></div>
+        <div class="graphBg" id="graphBg"></div>
+        <canvas id="linkCanvas"></canvas>
+        <div class="nodesLayer" id="nodesLayer"></div>
+        <div class="footerNote">
+          Prompted by <span style="color:var(--text)">Cris K B</span> • <a href="https://www.mkrshift.com" target="_blank" rel="noreferrer">MKRShift</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Preview + Output -->
+    <div class="panel right">
+      <div class="head">
+        <div class="h">
+          <div class="t">Preview & Output</div>
+          <div class="d">Interactive 3D toolpath preview + latest generated G-code.</div>
+        </div>
+        <button class="btn bad" id="btnClearOut">Clear</button>
+      </div>
+
+      <div class="body">
+        <div class="previewHost">
+
+<div class="previewControls" id="previewControls">
+  <div class="pcRow">
+    <div class="pcLabel">Role</div>
+    <select class="pcSel" id="prevRole">
+<option value="all">All</option>
+<option value="wall_outer">Wall (Outer)</option>
+<option value="wall_inner">Wall (Inner)</option>
+<option value="walls">Walls (All)</option>
+<option value="infill">Infill</option>
+<option value="bottom">Bottom</option>
+<option value="top">Top</option>
+<option value="travel">Travel</option>
+    </select>
+    <div class="pcLabel" style="margin-left:8px">Layer</div>
+    <select class="pcSel" id="prevLayerMode">
+      <option value="all">All</option>
+      <option value="single">Single</option>
+    </select>
+  </div>
+
+<div class="pcRow">
+  <div class="pcLabel">Mesh</div>
+  <select class="pcSel" id="prevMeshRender">
+    <option value="wire">Wire</option>
+    <option value="solid">Solid</option>
+    <option value="both">Both</option>
+    <option value="off">Off</option>
+  </select>
+  <div class="pcLabel" style="margin-left:8px">Opacity</div>
+  <input class="pcRange" id="prevMeshAlpha" type="range" min="0" max="100" value="28"/>
+  <div class="pcVal" id="prevMeshAlphaVal">28%</div>
+</div>
+<div class="pcRow">
+  <div class="pcLabel">Viewer</div>
+  <select class="pcSel" id="prevViewer">
+    <option value="gl">Studio GL</option>
+    <option value="mv">Model-Viewer</option>
+  </select>
+  <div class="pcHint" style="margin-left:8px; opacity:.75; font-size:11px">Model-Viewer shows mesh only (no toolpath overlay yet).</div>
+</div>
+
+  <div class="pcRow">
+    <input class="pcRange" id="prevLayer" type="range" min="0" max="0" value="0"/>
+    <div class="pcVal" id="prevLayerVal">All</div>
+  </div>
+
+<div class="pcLegend">
+  <span class="lg"><i data-role="top"></i>Top</span>
+  <span class="lg"><i data-role="bottom"></i>Bottom</span>
+  <span class="lg"><i data-role="infill"></i>Infill</span>
+  <span class="lg"><i data-role="wall_outer"></i>Outer</span>
+  <span class="lg"><i data-role="wall_inner"></i>Inner</span>
+</div>
+</div>
+
+          <canvas id="glPreview"></canvas>
+          <canvas id="fallback2d"></canvas>
+          <model-viewer id="mvPreview" camera-controls exposure="1.05" shadow-intensity="0.25" environment-image="neutral" style="display:none"></model-viewer>
+
+          <div class="hud">
+            <div class="chip"><b id="chipPts">0</b> pts</div>
+            <div class="chip">Len <b id="chipLen">0</b> mm</div>
+            <div class="chip">E <b id="chipE">0</b> mm</div>
+            <div class="chip">Time <b id="chipT">0</b> min</div>
+            <div class="chip">Drag rotate • Wheel zoom • Shift+Drag pan</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+          <button class="btn" id="btnCopy">Copy G-code</button>
+          <button class="btn" id="btnFitPreview">Fit preview</button>
+          <span class="pill" id="outPill">No output</span>
+        </div>
+
+        <pre id="gcodePre">No output yet. Click “Run graph”.</pre>
+      </div>
+    </div>
+  </div>
+
+
+
+<!-- Settings Overlay -->
+<div class="npOverlay" id="settingsOverlay" aria-hidden="true">
+  <div class="npPanel" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="npTop" style="gap:12px;">
+      <div style="font-weight:700; letter-spacing:.02em;">Settings</div>
+      <div class="npHint" style="margin-left:auto;"><span class="kbd">Esc</span> to close</div>
+    </div>
+    <div class="npList" id="settingsList" style="gap:10px; padding:14px;">
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Show Node Library sidebar</div>
+          <div class="npDesc">Optional panel with search + list. Space picker remains available.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setShowLib" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Space opens Node Picker</div>
+          <div class="npDesc">Comfy-style quick add menu.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setSpacePicker" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Open picker while typing</div>
+          <div class="npDesc">If enabled, Space will open picker even when an input field is focused.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setSpaceWhileTyping" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Picker delay</div>
+          <div class="npDesc">Milliseconds before opening on key-hold (tap still opens on release).</div>
+        </div>
+        <div class="npBadges">
+          <input id="setPickerDelay" type="number" min="0" max="400" step="10" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Spawn at cursor</div>
+          <div class="npDesc">If off, nodes spawn near the center of the view.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setSpawnCursor" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="hint">
+        Tip: Press <span class="kbd">Space</span> to add nodes, <span class="kbd">Enter</span> to place, <span class="kbd">Esc</span> to cancel.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Node Picker Overlay (Space) -->
+<div class="npOverlay" id="npOverlay" aria-hidden="true">
+  <div class="npPanel" role="dialog" aria-modal="true" aria-label="Add node">
+    <div class="npTop">
+      <input class="npSearch" id="npSearch" placeholder="Search nodes… (type to filter, Enter to add)" autocomplete="off" />
+      <div class="npHint"><span class="kbd">↑</span><span class="kbd">↓</span> <span class="kbd">Enter</span> <span class="kbd">Esc</span></div>
+    </div>
+    <div class="npList" id="npList"></div>
+  </div>
+</div>
+
+<script type="module" src="/src/app.js"></script>
+
+
+
+
+
+
+</body>
+</html>
+
