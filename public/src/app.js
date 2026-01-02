@@ -23,6 +23,35 @@ const downloadText = (filename, text)=>{
   a.remove();
   URL.revokeObjectURL(url);
 };
+const escapeHTML = (value)=>{
+  const str = String(value ?? "");
+  const map = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  };
+  return str.replace(/[&<>"']/g, (ch)=>map[ch] || ch);
+};
+
+const NODE_DEFS = {};
+const nodeRegistry = { api: {}, loaded: false };
+window.GCODE_STUDIO = { NODE_DEFS, api: nodeRegistry.api };
+
+function registerNodeModule(module, source){
+  const payload = module?.default || module?.node || module;
+  if(!payload){
+    throw new Error("Node module has no export" + (source ? ` (${source})` : ""));
+  }
+  const type = payload.type || payload?.def?.type;
+  const def = payload.def || payload;
+  if(!type || !def){
+    throw new Error("Node module missing type/def" + (source ? ` (${source})` : ""));
+  }
+  NODE_DEFS[type] = { ...def, type };
+}
+window.GCODE_STUDIO.registerNode = registerNodeModule;
 
 const NODE_DEFS = {};
 const nodeRegistry = { api: {}, loaded: false };
