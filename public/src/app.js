@@ -23,13 +23,6 @@ const downloadText = (filename, text)=>{
   a.remove();
   URL.revokeObjectURL(url);
 };
-const NODE_DEFS = {};
-function registerNode(type, def){
-  if(!type || !def) return;
-  NODE_DEFS[type] = def;
-}
-const nodeRegistry = { registerNode, NODE_DEFS, api: {} };
-window.GCODE_STUDIO = nodeRegistry;
 
 const toastEl = document.getElementById("toast");
 function toast(msg, ms=1400){
@@ -37,34 +30,6 @@ function toast(msg, ms=1400){
   toastEl.classList.add("show");
   clearTimeout(toastEl._t);
   toastEl._t = setTimeout(()=>toastEl.classList.remove("show"), ms);
-}
-
-async function loadNodes(){
-  try{
-    const res = await fetch("/api/nodes");
-    if(!res.ok) throw new Error(`Node API error: ${res.status}`);
-    const data = await res.json();
-    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
-    for(const entry of nodes){
-      if(!entry || !entry.module) continue;
-      try{
-        const mod = await import(entry.module);
-        const payload = mod?.default || null;
-        if(payload && payload.type && payload.def){
-          registerNode(payload.type, payload.def);
-        } else if(typeof mod?.register === "function"){
-          mod.register(nodeRegistry);
-        } else {
-          console.warn("Node module missing default export:", entry.module);
-        }
-      }catch(err){
-        console.warn("Failed to load node module", entry.module, err);
-      }
-    }
-  }catch(err){
-    console.warn(err);
-    toast(err.message || String(err));
-  }
 }
 
 window.addEventListener("error", (ev)=>{
@@ -3618,6 +3583,30 @@ if(mode === "surface"){
 return { mesh, path };
 }
 
+    for(let i=0;i<n;i++){
+      const pt = out[i];
+      if(!pt) continue;
+      const t = (n<=1)? 0 : i/(n-1);
+      const x = isFinite(pt.x)? pt.x : (isFinite(pt.X)? pt.X : 0);
+      const y = isFinite(pt.y)? pt.y : (isFinite(pt.Y)? pt.Y : 0);
+      const z = isFinite(pt.z)? pt.z : 0;
+      const layer = isFinite(pt.layer)? pt.layer : (isFinite(pt.meta?.layer)? pt.meta.layer : inferLayer({z}, ctx.base?.layerHeight||0.2));
+      const role0 = String(pt.role || pt.meta?.role || "");
+      const isTravel = !!pt.travel;
+      const pmap = {...ctx.pmap, role: role0};
+      if(isTravel && !d.applyToTravel) continue;
+
+      for(const c of compiled){
+        if(!c.fn) continue;
+        let ok=false;
+        try{ ok = !!c.fn(t,i,n,x,y,z,layer,pmap,ctx.base); }catch(e){ ok=false; }
+        if(!ok) continue;
+
+        const r=c.r;
+        if(r.role){
+          pt.role = r.role;
+          if(pt.meta) pt.meta.role = r.role;
+        }
 
     function zAt(x,y){
       if(d.kind==="dome"){
