@@ -1,5 +1,5 @@
 /* =========================================================
-   G-code Studio — Node Graph v69 v7 v3
+   G-code Studio — Node Graph v72 v7 v3
    Preview fix: offline WebGL orbit viewer (no CDN dependencies)
    Controls: rotate, shift-pan, wheel-zoom
    ========================================================= */
@@ -23,13 +23,7 @@ const downloadText = (filename, text)=>{
   a.remove();
   URL.revokeObjectURL(url);
 };
-const NODE_DEFS = {};
-function registerNode(type, def){
-  if(!type || !def) return;
-  NODE_DEFS[type] = def;
-}
-const nodeRegistry = { registerNode, NODE_DEFS, api: {} };
-window.GCODE_STUDIO = nodeRegistry;
+let NODE_DEFS = {};
 
 const toastEl = document.getElementById("toast");
 function toast(msg, ms=1400){
@@ -37,34 +31,6 @@ function toast(msg, ms=1400){
   toastEl.classList.add("show");
   clearTimeout(toastEl._t);
   toastEl._t = setTimeout(()=>toastEl.classList.remove("show"), ms);
-}
-
-async function loadNodes(){
-  try{
-    const res = await fetch("/api/nodes");
-    if(!res.ok) throw new Error(`Node API error: ${res.status}`);
-    const data = await res.json();
-    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
-    for(const entry of nodes){
-      if(!entry || !entry.module) continue;
-      try{
-        const mod = await import(entry.module);
-        const payload = mod?.default || null;
-        if(payload && payload.type && payload.def){
-          registerNode(payload.type, payload.def);
-        } else if(typeof mod?.register === "function"){
-          mod.register(nodeRegistry);
-        } else {
-          console.warn("Node module missing default export:", entry.module);
-        }
-      }catch(err){
-        console.warn("Failed to load node module", entry.module, err);
-      }
-    }
-  }catch(err){
-    console.warn(err);
-    toast(err.message || String(err));
-  }
 }
 
 window.addEventListener("error", (ev)=>{
@@ -1517,9 +1483,6 @@ function computeMeshBounds(tris){
   }
   return {min:{x:minX,y:minY,z:minZ}, max:{x:maxX,y:maxY,z:maxZ}, minx:minX, miny:minY, minz:minZ, maxx:maxX, maxy:maxY, maxz:maxZ};
 }
-
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-
 function buildFromImage(node, previewCanvas, drawPreviewCb){
   const d=node.data;
   node.runtime = node.runtime || {};
@@ -3058,6 +3021,5469 @@ const lastLayer = layers - 1;
   return out;
 }
 
+NODE_DEFS = {
+  "Path": {
+    title: "Path", tag: "generator",
+    desc: "Equation / Polar / Spiral. Produces a parametric path.",
+    inputs: [], outputs: [{name:"path", type:"path"}],
+    initData: ()=>({
+      mode: "equation",
+      equation: { x:"A*cos(2*pi*t)", y:"A*sin(2*pi*t)", t0:0, t1:1, steps:600, zMode:"layered", z:"0", layers:50, layerHeight:0.20, rotatePerLayerDeg:0 },
+      polar: { r:"A + B*sin(C*2*pi*t)", theta:"2*pi*t*C", t0:0, t1:1, steps:900, zMode:"layered", z:"0", layers:40, layerHeight:0.20, rotatePerLayerDeg:0 },
+      spiral: { height:120, layerHeight:0.24, radius:45, turns:120, waveAmp:6, waveFreq:7, stepsPerTurn:18 }
+      ,
+      // Script mode
+      scriptSteps: 900,
+      scriptLayerHeight: 0.28,
+      scriptCode: `// Return an array of points: {x,y,z, travel?:true, layer?:number, meta?:{layerHeight}}
+// Vars available: steps, layerHeight, p (params), base, Math, clamp, lerp, PI, TAU
+const pts = [];
+for(let i=0;i<steps;i++){
+  const t = i/(steps-1);
+  const r = 55;
+  const a = TAU*6*t;
+  const x = r*Math.cos(a);
+  const y = r*Math.sin(a);
+  const z = 40*t;
+  pts.push({x,y,z, meta:{layerHeight}});
+}
+return pts;`}),
+    render: (node, mount)=>{
+      const d = node.data;
+      mount.innerHTML = "";
+      const modeSel = elSelect(d.mode, [["equation","Equation (x(t), y(t))"],["polar","Polar (r(t), θ(t))"],["spiral","Spiral Vase (helical)"]],
+        (v)=>{ d.mode=v; rerenderNode(node.id); markDirtyAuto(); saveState(); });
+      mount.appendChild(field("Mode", modeSel));
+      const hint = document.createElement("div");
+      hint.className="hint";
+      hint.innerHTML = `Use <code>t</code> in [0..1]. Vars: <code>t</code>, <code>i</code>, <code>n</code>, <code>z</code>, <code>layer</code>.`;
+      
+      // Script mode (custom)
+      if(d.mode==="script"){
+        mount.appendChild(grid2([
+          field("Steps", elNumber(d.scriptSteps, v=>{ d.scriptSteps = Math.max(2, Math.floor(v||2)); markDirtyAuto(); saveState(); }, 1)),
+          field("Layer height", elNumber(d.scriptLayerHeight, v=>{ d.scriptLayerHeight = Number(v||0.2); markDirtyAuto(); saveState(); }, 0.01)),
+        ]));
+        const ta = elTextarea(d.scriptCode, v=>{ d.scriptCode = v; markDirtyAuto(); saveState(); });
+        ta.style.minHeight = "220px";
+        mount.appendChild(field("Script (returns points[])", ta));
+
+        const ex = document.createElement("div");
+        ex.className="hint";
+        ex.innerHTML = `
+<b>Tips</b><br>
+• Use <code>meta:{layerHeight}</code> on points so Rules/layer logic works.<br>
+• Set <code>travel:true</code> on the first point of a segment to force <code>G0</code> (no extrusion).<br>
+• Read params via <code>p.A</code>, <code>p.B</code>, etc. (strings → cast with <code>+p.A</code>).<br><br>
+<b>Examples (copy/paste)</b><br>
+<code>// 1) Helix (single path)</code><br>
+<pre style="white-space:pre-wrap;margin:6px 0 10px 0;opacity:.9">const pts=[];
+for(let i=0;i&lt;steps;i++){
+  const t=i/(steps-1);
+  const a=TAU*8*t;
+  const r=+p.A||55;
+  pts.push({x:r*Math.cos(a), y:r*Math.sin(a), z: ( +p.B||40 )*t, meta:{layerHeight}});
+}
+return pts;</pre>
+<code>// 2) Zigzag raster (segments via travel)</code><br>
+<pre style="white-space:pre-wrap;margin:6px 0 10px 0;opacity:.9">const pts=[];
+const rows=60, cols=160;
+const W=120, H=120;
+for(let r=0;r&lt;rows;r++){
+  const y=-H/2 + H*r/(rows-1);
+  const flip = (r%2);
+  for(let c=0;c&lt;cols;c++){
+    const u = c/(cols-1);
+    const uu = flip? (1-u):u;
+    const x=-W/2 + W*uu;
+    pts.push({x,y,z:0, travel:(c===0), meta:{layerHeight}});
+  }
+}
+return pts;</pre>
+<code>// 3) Multi-layer Lissajous (layer loops)</code><br>
+<pre style="white-space:pre-wrap;margin:6px 0 0 0;opacity:.9">const pts=[];
+const layers=90;
+const per=220;
+for(let L=0;L&lt;layers;L++){
+  for(let i=0;i&lt;per;i++){
+    const t=i/(per-1);
+    const x=60*Math.sin(TAU*(3*t));
+    const y=60*Math.sin(TAU*(2*t) + L*0.12);
+    const z=L*layerHeight;
+    pts.push({x,y,z, travel:(i===0), layer:L, meta:{layerHeight}});
+  }
+}
+return pts;</pre>
+        `;
+        mount.appendChild(ex);
+      }
+
+mount.appendChild(hint);
+      mount.appendChild(divider());
+      if(d.mode==="equation"){
+        const g = d.equation;
+        mount.appendChild(grid2([ field("x(t)", elInput(g.x, v=>{ g.x=v; markDirtyAuto(); saveState(); })), field("y(t)", elInput(g.y, v=>{ g.y=v; markDirtyAuto(); saveState(); })) ]));
+        mount.appendChild(grid2([ field("t0", elNumber(g.t0, v=>{ g.t0=v; markDirtyAuto(); saveState(); }, 0.01)), field("t1", elNumber(g.t1, v=>{ g.t1=v; markDirtyAuto(); saveState(); }, 0.01)) ]));
+        mount.appendChild(grid2([ field("Steps", elNumber(g.steps, v=>{ g.steps=Math.max(2, Math.floor(v||2)); markDirtyAuto(); saveState(); }, 1)),
+          field("Z mode", elSelect(g.zMode, [["layered","Layered"],["helical","Helical"],["explicit","Explicit z(t)"]], v=>{ g.zMode=v; rerenderNode(node.id); markDirtyAuto(); saveState(); })) ]));
+        if(g.zMode==="explicit"){
+          mount.appendChild(grid2([ field("z(t)", elInput(g.z, v=>{ g.z=v; markDirtyAuto(); saveState(); })), field("Rot/layer (deg)", elNumber(g.rotatePerLayerDeg, v=>{ g.rotatePerLayerDeg=v||0; markDirtyAuto(); saveState(); }, 0.1)) ]));
+        } else {
+          mount.appendChild(grid2([ field("Layers", elNumber(g.layers, v=>{ g.layers=Math.max(1, Math.floor(v||1)); markDirtyAuto(); saveState(); }, 1)),
+            field("Layer h (mm)", elNumber(g.layerHeight, v=>{ g.layerHeight=Math.max(0.01, v||0.2); markDirtyAuto(); saveState(); }, 0.01)) ]));
+          mount.appendChild(grid2([ field("Rot/layer (deg)", elNumber(g.rotatePerLayerDeg, v=>{ g.rotatePerLayerDeg=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+            field("z(t) (ignored)", elInput(g.z, v=>{ g.z=v; markDirtyAuto(); saveState(); })) ]));
+        }
+      }
+      if(d.mode==="polar"){
+        const g = d.polar;
+        mount.appendChild(grid2([ field("r(t)", elInput(g.r, v=>{ g.r=v; markDirtyAuto(); saveState(); })), field("θ(t)", elInput(g.theta, v=>{ g.theta=v; markDirtyAuto(); saveState(); })) ]));
+        mount.appendChild(grid2([ field("t0", elNumber(g.t0, v=>{ g.t0=v; markDirtyAuto(); saveState(); }, 0.01)), field("t1", elNumber(g.t1, v=>{ g.t1=v; markDirtyAuto(); saveState(); }, 0.01)) ]));
+        mount.appendChild(grid2([ field("Steps", elNumber(g.steps, v=>{ g.steps=Math.max(2, Math.floor(v||2)); markDirtyAuto(); saveState(); }, 1)),
+          field("Z mode", elSelect(g.zMode, [["layered","Layered"],["helical","Helical"],["explicit","Explicit z(t)"]], v=>{ g.zMode=v; rerenderNode(node.id); markDirtyAuto(); saveState(); })) ]));
+        if(g.zMode==="explicit"){
+          mount.appendChild(grid2([ field("z(t)", elInput(g.z, v=>{ g.z=v; markDirtyAuto(); saveState(); })), field("Rot/layer (deg)", elNumber(g.rotatePerLayerDeg, v=>{ g.rotatePerLayerDeg=v||0; markDirtyAuto(); saveState(); }, 0.1)) ]));
+        } else {
+          mount.appendChild(grid2([ field("Layers", elNumber(g.layers, v=>{ g.layers=Math.max(1, Math.floor(v||1)); markDirtyAuto(); saveState(); }, 1)),
+            field("Layer h (mm)", elNumber(g.layerHeight, v=>{ g.layerHeight=Math.max(0.01, v||0.2); markDirtyAuto(); saveState(); }, 0.01)) ]));
+          mount.appendChild(grid2([ field("Rot/layer (deg)", elNumber(g.rotatePerLayerDeg, v=>{ g.rotatePerLayerDeg=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+            field("z(t) (ignored)", elInput(g.z, v=>{ g.z=v; markDirtyAuto(); saveState(); })) ]));
+        }
+      }
+      if(d.mode==="spiral"){
+        const g = d.spiral;
+        mount.appendChild(grid2([ field("Height (mm)", elNumber(g.height, v=>{ g.height=Math.max(1, v||1); markDirtyAuto(); saveState(); }, 1)),
+          field("Layer h (mm)", elNumber(g.layerHeight, v=>{ g.layerHeight=Math.max(0.01, v||0.24); markDirtyAuto(); saveState(); }, 0.01)) ]));
+        mount.appendChild(grid2([ field("Radius (mm)", elNumber(g.radius, v=>{ g.radius=Math.max(0, v||0); markDirtyAuto(); saveState(); }, 0.1)),
+          field("Turns", elNumber(g.turns, v=>{ g.turns=Math.max(1, v||1); markDirtyAuto(); saveState(); }, 1)) ]));
+        mount.appendChild(grid2([ field("Wave amp (mm)", elNumber(g.waveAmp, v=>{ g.waveAmp=Math.max(0, v||0); markDirtyAuto(); saveState(); }, 0.1)),
+          field("Wave freq", elNumber(g.waveFreq, v=>{ g.waveFreq=Math.max(0, v||0); markDirtyAuto(); saveState(); }, 0.1)) ]));
+        mount.appendChild(grid2([ field("Steps/turn", elNumber(g.stepsPerTurn, v=>{ g.stepsPerTurn=Math.max(6, Math.floor(v||6)); markDirtyAuto(); saveState(); }, 1)),
+          field("—", elInput("", ()=>{}, "")) ]));
+      }
+    },
+    evaluate: (node, ctx)=>{
+      const pmap = ctx.pmap;
+      const d = node.data;
+      if(d.mode==="spiral") return { path: genSpiralVase(d.spiral) };
+      if(d.mode==="polar") return { path: genPolar(d.polar, pmap) };
+      return { path: genEquation(d.equation, pmap) };
+    }
+  },
+
+  "SVG Import": {
+    title: "SVG Import", tag: "import",
+    desc: "Upload or paste an SVG, sample geometry into a toolpath.",
+    inputs: [], outputs: [{name:"path", type:"path"}],
+    initData: ()=>({
+      svgText: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 50 90 C 20 70, 5 50, 18 32 C 28 18, 45 24, 50 35 C 55 24, 72 18, 82 32 C 95 50, 80 70, 50 90 Z" />
+</svg>`,
+      sampleStep: 1.2,
+      scaleMmPerUnit: 1.2,
+      center: true,
+      zMode: "layered",
+      layers: 26,
+      layerHeight: 0.22,
+      height: 60,
+      rotatePerLayerDeg: 2,
+    }),
+    render: (node, mount)=>{
+      const d = node.data;
+      mount.innerHTML = "";
+      const file = document.createElement("input");
+      file.type="file";
+      file.accept=".svg,image/svg+xml";
+      file.addEventListener("change", async ()=>{
+        const f = file.files?.[0];
+        file.value="";
+        if(!f) return;
+        const txt = await f.text();
+        d.svgText = txt;
+        rerenderNode(node.id);
+        markDirtyAuto(); saveState();
+        toast("SVG loaded");
+      });
+      mount.appendChild(field("Upload SVG", file));
+      mount.appendChild(field("SVG Text", elTextarea(d.svgText, v=>{ d.svgText=v; markDirtyAuto(); saveState(); }, 7)));
+      mount.appendChild(grid2([
+        field("Sample step", elNumber(d.sampleStep, v=>{ d.sampleStep=Math.max(0.1, v||1.5); markDirtyAuto(); saveState(); }, 0.1)),
+        field("Scale mm/unit", elNumber(d.scaleMmPerUnit, v=>{ d.scaleMmPerUnit=Math.max(0.0001, v||1); markDirtyAuto(); saveState(); }, 0.01)),
+      ]));
+      mount.appendChild(grid2([
+        field("Center", elSelect(String(d.center), [["true","Yes"],["false","No"]], v=>{ d.center=(v==="true"); markDirtyAuto(); saveState(); })),
+        field("Z mode", elSelect(d.zMode, [["flat","Flat"],["layered","Layered"],["helical","Helical"]], v=>{ d.zMode=v; rerenderNode(node.id); markDirtyAuto(); saveState(); }))
+      ]));
+      if(d.zMode==="layered"){
+        mount.appendChild(grid2([
+          field("Layers", elNumber(d.layers, v=>{ d.layers=Math.max(1, Math.floor(v||1)); markDirtyAuto(); saveState(); }, 1)),
+          field("Layer h (mm)", elNumber(d.layerHeight, v=>{ d.layerHeight=Math.max(0.01, v||0.2); markDirtyAuto(); saveState(); }, 0.01))
+        ]));
+        mount.appendChild(grid2([
+          field("Rot/layer (deg)", elNumber(d.rotatePerLayerDeg, v=>{ d.rotatePerLayerDeg=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+          field("—", elInput("", ()=>{}, ""))
+        ]));
+      }
+      if(d.zMode==="helical"){
+        mount.appendChild(grid2([
+          field("Height (mm)", elNumber(d.height, v=>{ d.height=Math.max(1, v||1); markDirtyAuto(); saveState(); }, 1)),
+          field("—", elInput("", ()=>{}, ""))
+        ]));
+      }
+    },
+    evaluate: (node)=>({ path: genFromSVG(node.data) })
+  },
+
+  
+"Non-Planar": {
+  title:"Non-Planar", tag:"modifier",
+  desc:"Warp Z along the path (non-planar). Use expressions with x,y,z,t,i,n,layer.",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData: ()=>({
+    applyTo:"all",
+    applyRole:"top",
+    mode:"offset",            // offset | absolute
+    zExpr:"2*sin(2*pi*t)",    // mm
+    clamp:"none",             // none | minmax
+    zMin: 0,
+    zMax: 999,
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(grid2([
+      field("Apply", elSelect(d.applyTo, [["all","All"],["walls","Walls"],["infill","Infill"],["top","Top"],["bottom","Bottom"]], v=>{ d.applyTo=v; markDirtyAuto(); saveState(); })),
+      field("Role key", elInput(d.applyRole||"top", v=>{ d.applyRole=v; markDirtyAuto(); saveState(); }, "top"))
+    ]));
+
+    mount.appendChild(grid2([
+      field("Mode", elSelect(d.mode, [["offset","Offset (z + f)"],["absolute","Absolute (z = f)"]], v=>{ d.mode=v; markDirtyAuto(); saveState(); })),
+      field("Clamp", elSelect(d.clamp, [["none","None"],["minmax","Min/Max"]], v=>{ d.clamp=v; rerenderNode(node.id); markDirtyAuto(); saveState(); }))
+    ]));
+    mount.appendChild(field("Z expression (mm)", elInput(d.zExpr, v=>{ d.zExpr=v; markDirtyAuto(); saveState(); }, "e.g. 1.5*sin(x/10) + 1.5*cos(y/10)")));
+    if(d.clamp==="minmax"){
+      mount.appendChild(grid2([
+        field("Z min", elNumber(d.zMin, v=>{ d.zMin=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+        field("Z max", elNumber(d.zMax, v=>{ d.zMax=v||0; markDirtyAuto(); saveState(); }, 0.1))
+      ]));
+    }
+    const hint=document.createElement("div");
+    hint.className="hint";
+    hint.innerHTML = `Vars: <code>x</code>, <code>y</code>, <code>z</code>, <code>t</code>, <code>i</code>, <code>n</code>, <code>layer</code> + params. Tip: try <code>2*sin(x/12)</code> or <code>1.2*sin(2*pi*t*8)</code>.`;
+    mount.appendChild(hint);
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.path || inp?.out || inp || []);
+    if(!path.length) return { out: [] };
+    const d=node.data;
+    const pmap = ctx.pmap;
+    const base = ctx.base;
+    let fn;
+    try{ fn = compileExpr(d.zExpr || "0"); }catch(e){ throw new Error("Non-Planar.zExpr: "+e.message); }
+    const lh = path.find(p=>p?.meta?.layerHeight)?.meta?.layerHeight ?? 0.2;
+    const out = path.map((pt, i)=>{
+      const t = (path.length<=1) ? 0 : i/(path.length-1);
+      const x = Number(pt.x ?? 0);
+      const y = Number(pt.y ?? 0);
+      const z = Number(pt.z ?? 0);
+      const layer = (pt.layer!=null) ? (pt.layer|0) : Math.max(0, Math.floor(z/Math.max(0.01, lh)));
+      let zNew = Number(fn(t, i, path.length, x, y, z, layer, pmap, base));
+      if(d.mode==="offset") zNew = z + zNew;
+      if(d.clamp==="minmax"){
+        const mn = Number(d.zMin ?? 0);
+        const mx = Number(d.zMax ?? 0);
+        if(isFinite(mn) && isFinite(mx)) zNew = clamp(zNew, Math.min(mn,mx), Math.max(mn,mx));
+      }
+      return {...pt, z: zNew};
+    });
+    return { out };
+  }
+},
+
+
+"Mesh Import": {
+  title:"Mesh Import", tag:"mesh",
+  desc:"Load an STL (binary/ASCII). Outputs a mesh, and optionally a surface raster path.",
+  inputs: [],
+  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
+  initData: ()=>({
+      // Surface toolpath output
+      surfacePathEnabled:true,
+      pattern:"raster",
+      spacing: 1.0,
+      step: 0.6,
+      angleDeg: 0,
+      margin: 0,
+      zOffset: 0,
+      serpentine:true,
+      maxPoints: 160000,
+
+    name:"",
+    b64:"",
+    keep:false,
+    centerXY:true,
+    zeroZMin:true,
+    scale: 1,
+    rxDeg:0, ryDeg:0, rzDeg:0,
+    tx:0, ty:0, tz:0,
+    cellSize: 10,
+    _triCount: 0,
+    _warn: "",
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+
+    const file = document.createElement("input");
+    file.type="file";
+    file.accept=".stl,model/stl,application/sla";
+    file.style.width="100%";
+    for(const ev of ["pointerdown","mousedown","click"]){
+      file.addEventListener(ev, e=>e.stopPropagation());
+    }
+    file.addEventListener("change", async ()=>{
+      const f = file.files && file.files[0];
+      if(!f) return;
+      try{
+        const buf = await f.arrayBuffer();
+        const parsed = parseSTL(buf);
+        meshRuntimeCache.set(node.id, { mesh: parsed, name:f.name, bytesLen: buf.byteLength });
+        d.name = f.name;
+        d._triCount = parsed.triCount|0;
+        d._warn = (parsed.triCount>80000) ? "Large mesh: wireframe is decimated for preview." : "";
+        if(d.keep){
+          if(buf.byteLength <= 2_500_000){
+            d.b64 = b64FromArrayBuffer(buf);
+          } else {
+            d.b64 = "";
+            d._warn = "Mesh too large to store in project. It will persist only in memory this session.";
+          }
+        } else {
+          d.b64 = "";
+        }
+        rerenderNode(node.id);
+        markDirtyAuto();
+        saveState();
+        schedulePreviewUpdate();
+      }catch(err){
+        toast("STL error: " + (err.message||String(err)));
+      }
+    });
+    mount.appendChild(field("STL file", file));
+
+    mount.appendChild(grid2([
+      field("Keep in project", elSelect(String(d.keep), [["false","No (memory only)"],["true","Yes (if small)"]], v=>{ d.keep=(v==="true"); markDirtyAuto(); saveState(); })),
+      field("Index cell (mm)", elNumber(d.cellSize, v=>{ d.cellSize=Math.max(1, Number(v||10)); markDirtyAuto(); saveState(); }, 1)),
+    ]));
+
+    mount.appendChild(grid2([
+      field("Center XY", elSelect(String(d.centerXY), [["true","Yes"],["false","No"]], v=>{ d.centerXY=(v==="true"); markDirtyAuto(); saveState(); schedulePreviewUpdate(); })),
+      field("Zero Z-min", elSelect(String(d.zeroZMin), [["true","Yes"],["false","No"]], v=>{ d.zeroZMin=(v==="true"); markDirtyAuto(); saveState(); schedulePreviewUpdate(); })),
+    ]));
+
+    mount.appendChild(grid2([
+      field("Scale", elNumber(d.scale, v=>{ d.scale=Number(v||1); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 0.01)),
+      field("Rotate Z°", elNumber(d.rzDeg, v=>{ d.rzDeg=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 1)),
+    ]));
+    mount.appendChild(grid2([
+      field("Rotate X°", elNumber(d.rxDeg, v=>{ d.rxDeg=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 1)),
+      field("Rotate Y°", elNumber(d.ryDeg, v=>{ d.ryDeg=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 1)),
+    ]));
+    mount.appendChild(grid2([
+      field("Translate X", elNumber(d.tx, v=>{ d.tx=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 0.1)),
+      field("Translate Y", elNumber(d.ty, v=>{ d.ty=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 0.1)),
+    ]));
+    mount.appendChild(field("Translate Z", elNumber(d.tz, v=>{ d.tz=Number(v||0); markDirtyAuto(); saveState(); schedulePreviewUpdate(); }, 0.1)));
+
+    const info = document.createElement("div");
+    info.className="hint";
+    info.innerHTML = d.name
+      ? `Loaded: <b>${escapeHTML(d.name)}</b> • Triangles: <b>${d._triCount||0}</b>${d._warn?`<br><span style="opacity:.8">${escapeHTML(d._warn)}</span>`:""}`
+      : "Load an STL to preview it and use it for projection (non-planar / surface mapping).";
+    mount.appendChild(info);
+
+    const box = document.createElement("div");
+    box.style.height = "160px";
+    box.style.borderRadius = "12px";
+    box.style.border = "1px solid var(--stroke)";
+    box.style.background = "rgba(0,0,0,0.18)";
+    box.style.overflow = "hidden";
+    const canvas = document.createElement("canvas");
+    canvas.width = 520; canvas.height = 260;
+    canvas.style.width="100%";
+    canvas.style.height="100%";
+    box.appendChild(canvas);
+    mount.appendChild(box);
+
+    const token = (node._meshPrevTok = (node._meshPrevTok||0)+1);
+    function loop(t){
+      if(node._meshPrevTok !== token) return;
+      const runtime = meshRuntimeCache.get(node.id);
+      let mesh = runtime?.mesh || null;
+      if(!mesh && d.b64){
+        try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }catch(_){ mesh=null; }
+      }
+      if(mesh){
+        let m = mesh;
+        m = centerMesh(m, d.centerXY, d.zeroZMin);
+        m = applyMeshTransform(m, d);
+        let overlayPath = null;
+        if(d.surfacePathEnabled){
+          try{
+            if(!m.index || m.index.cs !== Number(d.cellSize||10)) buildMeshIndex(m, d.cellSize||10);
+            overlayPath = surfaceRasterPath(m, {...d, maxPoints: 4500, step: Math.max(0.25, Number(d.step||0.6)*2) }, 0.2, 4500);
+          }catch(_){ overlayPath=null; }
+        }
+        drawWireframe2D(canvas, m.tris, m.bounds, t*0.001, overlayPath);
+      } else {
+        const ctx=canvas.getContext("2d");
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.font = "16px ui-sans-serif, system-ui";
+        ctx.fillText("No mesh", 18, 34);
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    let mesh = meshRuntimeCache.get(node.id)?.mesh || null;
+    if(!mesh && d.b64){
+      try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }
+      catch(e){ throw new Error("Mesh Import: failed to decode persisted STL. Re-upload."); }
+    }
+    if(!mesh) return { mesh:null, path:[] };
+    mesh = centerMesh(mesh, d.centerXY, d.zeroZMin);
+    mesh = applyMeshTransform(mesh, d);
+    buildMeshIndex(mesh, d.cellSize||10);
+    let path = null;
+    if(d.surfacePathEnabled){
+      path = surfaceRasterPath(mesh, d, (ctx.base?.layerHeight||0.2));
+    }
+    return { mesh, path };
+  }
+},
+
+"Mesh Primitive": {
+  title:"Mesh Primitive", tag:"mesh",
+  uiSchema:SCHEMA_MESH_PRIMITIVE,
+  desc:"Procedural mesh generator for demos (dome / wavy plane).",
+  inputs: [],
+  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
+  initData: ()=>({
+      // Surface toolpath output
+      surfacePathEnabled:true,
+      pattern:"raster",
+      spacing: 1.0,
+      step: 0.6,
+      angleDeg: 0,
+      margin: 0,
+      zOffset: 0,
+      serpentine:true,
+      maxPoints: 160000,
+
+    kind:"dome",
+    size:120,
+    height:40,
+    seg:40,
+    waveAmp:8,
+    waveFreq:3,
+    cellSize:10,
+// Path output mode:
+// "none" -> no path output
+// "surface" -> surface raster (non-planar on mesh)
+// "slice" -> planar slice (walls/infill/top/bottom)
+pathMode: "surface",
+
+// Slice settings (used when pathMode==="slice")
+slice_layerHeight: 0.24,
+slice_lineWidth: 0.45,
+slice_perimeters: 2,
+slice_infillPct: 18,
+slice_infillAngle: 45,
+slice_infillPattern: "grid",
+slice_topLayers: 4,
+slice_bottomLayers: 4,
+slice_serpentine: true}),
+  render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const seg = Math.max(8, Math.floor(d.seg||40));
+    const size = Number(d.size||120);
+    const half = size*0.5;
+    const h = Number(d.height||40);
+    const tris = [];
+if(d.kind==="cube"){
+  // Watertight cube volume (size x size x height), bottom at z=0
+  const sx = Number(d.size||120);
+  const sy = Number(d.size||120);
+  const sz = Number(d.height||40);
+  const hx = sx*0.5, hy = sy*0.5;
+  const x0=-hx, x1=hx, y0=-hy, y1=hy, z0=0, z1=sz;
+  const t = [];
+  function tri(ax,ay,az,bx,by,bz,cx,cy,cz){ t.push(ax,ay,az,bx,by,bz,cx,cy,cz); }
+
+  // bottom (z0) - face normal down
+  tri(x0,y0,z0, x1,y0,z0, x1,y1,z0);
+  tri(x0,y0,z0, x1,y1,z0, x0,y1,z0);
+
+  // top (z1) - face normal up
+  tri(x0,y0,z1, x1,y1,z1, x1,y0,z1);
+  tri(x0,y0,z1, x0,y1,z1, x1,y1,z1);
+
+  // front (y1)
+  tri(x0,y1,z0, x1,y1,z0, x1,y1,z1);
+  tri(x0,y1,z0, x1,y1,z1, x0,y1,z1);
+
+  // back (y0)
+  tri(x0,y0,z0, x1,y0,z1, x1,y0,z0);
+  tri(x0,y0,z0, x0,y0,z1, x1,y0,z1);
+
+  // left (x0)
+  tri(x0,y0,z0, x0,y1,z1, x0,y1,z0);
+  tri(x0,y0,z0, x0,y0,z1, x0,y1,z1);
+
+  // right (x1)
+  tri(x1,y0,z0, x1,y1,z0, x1,y1,z1);
+  tri(x1,y0,z0, x1,y1,z1, x1,y0,z1);
+
+  const arr = new Float32Array(t);
+  const mesh = { tris: arr, triCount: Math.floor(arr.length/9), bounds: computeMeshBounds(arr), index:null };
+  buildMeshIndex(mesh, d.cellSize||10);
+  // Path output according to mode
+const mode = (d.pathMode || "surface");
+let path = [];
+if(mode === "surface"){
+  if(d.surfacePathEnabled){
+    path = surfaceRasterPath(mesh, d, (ctx.base?.layerHeight||0.2));
+  }else{
+    path = [];
+  }
+}else if(mode === "slice"){
+  const opts = {
+    layerHeight: d.slice_layerHeight,
+    lineWidth: d.slice_lineWidth,
+    perimeters: d.slice_perimeters,
+    infillPct: d.slice_infillPct,
+    infillAngle: d.slice_infillAngle,
+    infillPattern: d.slice_infillPattern,
+    topLayers: d.slice_topLayers,
+    bottomLayers: d.slice_bottomLayers,
+    serpentine: d.slice_serpentine,
+    maxLayers: (d.slice_limitLayers||900),
+    maxSegs: 260000,
+    roleOrder: "bottom,walls,infill,top"
+  };
+  path = sliceMeshPlanar(mesh, opts);
+}else{
+  path = [];
+}
+return { mesh, path };
+}
+
+
+    function zAt(x,y){
+      if(d.kind==="dome"){
+        const r = Math.sqrt(x*x + y*y);
+        const R = half;
+        const k = clamp(1 - (r*r)/(R*R), 0, 1);
+        return Math.sqrt(k) * h;
+      } else {
+        const a = Number(d.waveAmp||8);
+        const f = Number(d.waveFreq||3);
+        return a*Math.sin((x/half)*Math.PI*f) * Math.cos((y/half)*Math.PI*f) + h*0.2;
+      }
+    }
+    for(let iy=0; iy<seg; iy++){
+      for(let ix=0; ix<seg; ix++){
+        const x0 = -half + (ix/seg)*size;
+        const x1 = -half + ((ix+1)/seg)*size;
+        const y0 = -half + (iy/seg)*size;
+        const y1 = -half + ((iy+1)/seg)*size;
+        const z00 = zAt(x0,y0), z10=zAt(x1,y0), z01=zAt(x0,y1), z11=zAt(x1,y1);
+        tris.push(x0,y0,z00,  x1,y0,z10,  x1,y1,z11);
+        tris.push(x0,y0,z00,  x1,y1,z11,  x0,y1,z01);
+      }
+    }
+    const arr = new Float32Array(tris);
+    const mesh = { tris: arr, triCount: Math.floor(arr.length/9), bounds: computeMeshBounds(arr), index:null };
+    buildMeshIndex(mesh, d.cellSize||10);
+    // Path output according to mode
+const mode = (d.pathMode || "surface");
+let path = [];
+if(mode === "surface"){
+  if(d.surfacePathEnabled){
+    path = surfaceRasterPath(mesh, d, (ctx.base?.layerHeight||0.2));
+  }else{
+    path = [];
+  }
+}else if(mode === "slice"){
+  const opts = {
+    layerHeight: d.slice_layerHeight,
+    lineWidth: d.slice_lineWidth,
+    perimeters: d.slice_perimeters,
+    infillPct: d.slice_infillPct,
+    infillAngle: d.slice_infillAngle,
+    infillPattern: d.slice_infillPattern,
+    topLayers: d.slice_topLayers,
+    bottomLayers: d.slice_bottomLayers,
+    serpentine: d.slice_serpentine,
+    maxLayers: 900,
+    maxSegs: 260000,
+    roleOrder: "bottom,walls,infill,top"
+  };
+  path = sliceMeshPlanar(mesh, opts);
+}else{
+  path = [];
+}
+return { mesh, path };
+  }
+},
+
+"Project to Mesh": {
+  title:"Project to Mesh", tag:"modifier",
+  desc:"Set Z from a mesh top-surface under each XY point (vertical projection). Great for non-planar.",
+  inputs:[{name:"path", type:"path"}, {name:"mesh", type:"mesh"}],
+  outputs:[{name:"out", type:"path"}],
+  initData: ()=>({
+    mode:"replace",
+    offsetZ: 0,
+    fallback:"keep",
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(grid2([
+      field("Mode", elSelect(d.mode, [["replace","Replace Z = Zmesh + offset"],["offset","Offset Z += Zmesh + offset"]], v=>{ d.mode=v; markDirtyAuto(); saveState(); })),
+      field("Fallback", elSelect(d.fallback, [["keep","Keep original Z"],["zero","Use 0"]], v=>{ d.fallback=v; markDirtyAuto(); saveState(); })),
+    ]));
+    mount.appendChild(field("Offset Z (mm)", elNumber(d.offsetZ, v=>{ d.offsetZ=Number(v||0); markDirtyAuto(); saveState(); }, 0.1)));
+    const hint=document.createElement("div");
+    hint.className="hint";
+    hint.innerHTML = "Feeds on <b>mesh</b> + <b>path</b>. It takes each XY point and finds the highest triangle surface Z under that point. If no triangle covers XY, fallback applies.";
+    mount.appendChild(hint);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const pin = ctx.getInput(node.id, "path");
+    const min = ctx.getInput(node.id, "mesh");
+    const path = (pin?.out || pin?.path || pin || []);
+    const mesh = (min?.mesh || min?.out || min || null);
+    if(!path || !path.length) return { out: [] };
+    if(!mesh || !mesh.tris) return { out: Array.isArray(path) ? path : [] };
+    if(!mesh.index) buildMeshIndex(mesh, 10);
+
+    const out = [];
+    for(let i=0;i<path.length;i++){
+      const p = path[i];
+      const x = Number(p.x ?? p.X ?? 0);
+      const y = Number(p.y ?? p.Y ?? 0);
+      const z0 = Number(p.z ?? 0);
+      const zM = meshTopZ(mesh, x, y);
+      let z = z0;
+      if(zM==null){
+        z = (d.fallback==="zero") ? 0 : z0;
+      } else {
+        const v = zM + Number(d.offsetZ||0);
+        z = (d.mode==="replace") ? v : (z0 + v);
+      }
+      out.push({...p, x, y, z});
+    }
+    return { out };
+  }
+},
+
+"Transform": {
+    title:"Transform", tag:"modifier",
+    desc:"Translate, rotate, scale a path.",
+    inputs: [{name:"in", type:"path"}],
+    outputs:[{name:"out", type:"path"}],
+    initData: ()=>({tx:0, ty:0, scale:1.0, rotDeg:0}),
+    render: (node, mount)=>{
+      const d=node.data;
+      mount.innerHTML="";
+      mount.appendChild(grid2([
+        field("Translate X", elNumber(d.tx, v=>{ d.tx=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+        field("Translate Y", elNumber(d.ty, v=>{ d.ty=v||0; markDirtyAuto(); saveState(); }, 0.1))
+      ]));
+      mount.appendChild(grid2([
+        field("Scale", elNumber(d.scale, v=>{ d.scale=Math.max(0.0001, v||1); markDirtyAuto(); saveState(); }, 0.01)),
+        field("Rotate (deg)", elNumber(d.rotDeg, v=>{ d.rotDeg=v||0; markDirtyAuto(); saveState(); }, 0.1))
+      ]));
+      const hint = document.createElement("div");
+      hint.className="hint";
+      hint.innerHTML = `Applied about (0,0).`;
+      mount.appendChild(hint);
+    },
+    evaluate: (node, ctx)=>{
+      const inp = ctx.getInput(node.id, "in");
+      const path = (inp?.path || inp?.out || inp || []);
+      const d=node.data;
+      const a = rad(d.rotDeg||0);
+      const ca=Math.cos(a), sa=Math.sin(a);
+      const s = d.scale||1;
+      const out = path.map(p=>{
+        const x = (p.x*s), y=(p.y*s);
+        const xr = x*ca - y*sa;
+        const yr = x*sa + y*ca;
+        return {...p, x:xr + (d.tx||0), y:yr + (d.ty||0)};
+      });
+      return { out };
+    }
+  },
+
+  "Repeat": {
+    title:"Repeat", tag:"modifier",
+    desc:"Duplicate a path into an nx×ny grid.",
+    inputs:[{name:"in", type:"path"}],
+    outputs:[{name:"out", type:"path"}],
+    initData: ()=>({nx:1, ny:1, dx:70, dy:70, center:true}),
+    render: (node, mount)=>{
+      const d=node.data;
+      mount.innerHTML="";
+      mount.appendChild(grid2([
+        field("nx", elNumber(d.nx, v=>{ d.nx=Math.max(1, Math.floor(v||1)); markDirtyAuto(); saveState(); }, 1)),
+        field("ny", elNumber(d.ny, v=>{ d.ny=Math.max(1, Math.floor(v||1)); markDirtyAuto(); saveState(); }, 1)),
+      ]));
+      mount.appendChild(grid2([
+        field("dx (mm)", elNumber(d.dx, v=>{ d.dx=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+        field("dy (mm)", elNumber(d.dy, v=>{ d.dy=v||0; markDirtyAuto(); saveState(); }, 0.1)),
+      ]));
+      mount.appendChild(field("Center", elSelect(String(d.center), [["true","Yes"],["false","No"]], v=>{ d.center=(v==="true"); markDirtyAuto(); saveState(); })));
+    },
+    evaluate:(node, ctx)=>{
+      const inp = ctx.getInput(node.id, "in");
+      const path = (inp?.out || inp?.path || inp || []);
+      const d=node.data;
+      if((d.nx<=1 && d.ny<=1)) return { out: path.slice() };
+      const out=[];
+      for(let iy=0; iy<d.ny; iy++){
+        for(let ix=0; ix<d.nx; ix++){
+          const ox = d.center ? (ix - (d.nx-1)/2)*d.dx : ix*d.dx;
+          const oy = d.center ? (iy - (d.ny-1)/2)*d.dy : iy*d.dy;
+          for(const p of path){
+            out.push({...p, x:p.x+ox, y:p.y+oy});
+          }
+        }
+      }
+      return { out };
+    }
+  },
+
+  "Rules": {
+    title:"Rules", tag:"rules",
+    uiSchema:SCHEMA_RULES,
+  desc:"Per-layer & per-segment expressions: speed(t), flow(t), temp(layer), fan(layer).",
+    inputs: [{name:"in", type:"path"}],
+    outputs:[{name:"rules", type:"rules"}],
+    initData: ()=>({ speedExpr:"printSpeed", flowExpr:"1", enableTemp:false, tempExpr:"nozzleTemp", enableFan:false, fanExpr:"0", layerHeightHint:0.20, injectEveryN:1 }),
+    render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
+    evaluate:(node, ctx)=>{
+      const d=node.data;
+      const pmap = ctx.pmap;
+      const base = ctx.base;
+      let speedFn, flowFn, tempFn, fanFn;
+      try { speedFn = compileExpr(d.speedExpr || "printSpeed"); } catch(e){ throw new Error("Rules.speedExpr: "+e.message); }
+      try { flowFn  = compileExpr(d.flowExpr  || "1"); } catch(e){ throw new Error("Rules.flowExpr: "+e.message); }
+      if(d.enableTemp){ try { tempFn = compileExpr(d.tempExpr || "nozzleTemp"); } catch(e){ throw new Error("Rules.tempExpr: "+e.message); } }
+      if(d.enableFan){ try { fanFn = compileExpr(d.fanExpr || "0"); } catch(e){ throw new Error("Rules.fanExpr: "+e.message); } }
+      return {
+        rules: {
+          layerHeightHint: d.layerHeightHint,
+          injectEveryN: d.injectEveryN,
+          speedFn: (t,i,n,x,y,z,layer)=> Number(speedFn(t,i,n,x,y,z,layer,pmap,base)),
+          flowFn:  (t,i,n,x,y,z,layer)=> Number(flowFn (t,i,n,x,y,z,layer,pmap,base)),
+          enableTemp: !!d.enableTemp,
+          tempFn: tempFn ? ((t,i,n,x,y,z,layer)=> Number(tempFn(t,i,n,x,y,z,layer,pmap,base))) : null,
+          enableFan: !!d.enableFan,
+          fanFn: fanFn ? ((t,i,n,x,y,z,layer)=> Number(fanFn(t,i,n,x,y,z,layer,pmap,base))) : null,
+        }
+      };
+    }
+  },
+
+  "Printer": {
+    title:"Printer", tag:"machine",
+    uiSchema:SCHEMA_PRINTER,
+  desc:"Bed, origin, filament, line width, start/end G-code.",
+    inputs: [], outputs:[{name:"profile", type:"profile"}],
+    initData: ()=>({
+      name:"Generic FDM",
+      bedW:220, bedD:220, bedH:250,
+      origin:"center",
+      offsetX:0, offsetY:0,
+      travelZ:5,
+      nozzle:0.4,
+      lineWidth:0.45,
+      filamentDia:1.75,
+      extrusionMult:1.0,
+      tempNozzle:210,
+      tempBed:60,
+      speedPrint:1800,
+      speedTravel:6000,
+      startGcode:`M104 S210
+M140 S60
+G28
+G92 E0`,
+      endGcode:`M104 S0
+M140 S0
+G28 X0
+M84`
+    }),
+    render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
+    evaluate:(node)=>({ profile: {...node.data} })
+  },
+
+  "Export": {
+    title:"Export", tag:"output",
+    uiSchema:SCHEMA_EXPORT,
+  desc:"Generate G-code (needs Path + Printer; Rules optional).",
+    inputs: [{name:"path", type:"path"}, {name:"rules", type:"rules"}, {name:"profile", type:"profile"}, {name:"mesh", type:"mesh"}],
+    outputs: [{name:"gcode", type:"gcode"}],
+    initData: ()=>({ addLayerComments:true, capPreviewChars:200000, fileName:"gcode-studio_output" }),
+    render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
+    evaluate:(node, ctx)=>{
+      const pathIn = ctx.getInput(node.id, "path");
+      const rulesIn = ctx.getInput(node.id, "rules");
+      const profIn = ctx.getInput(node.id, "profile");
+      const meshIn = ctx.getInput(node.id, "mesh");
+      const path = (pathIn?.out || pathIn?.path || pathIn || []);
+      const profile = (profIn?.profile || profIn || ctx.defaultProfile || null);
+      const rules = (rulesIn?.rules || rulesIn || null);
+      const mesh = (meshIn?.mesh || meshIn?.out || meshIn || null);
+      if(!profile) throw new Error("Export: missing Printer profile input");
+      const safePath = Array.isArray(path) ? path.filter(Boolean) : [];
+      const {gcode, stats, machinePath} = buildGcodeWithRules(safePath, profile, rules, node.data.addLayerComments);
+      state.outputs.gcode = gcode;
+      state.outputs.stats = stats;
+      state.outputs.path = machinePath;
+      state.outputs.mesh = mesh || null;
+      return { gcode };
+    }
+  },
+  "Orca Preset": {
+    title:"Orca Preset", tag:"machine",
+    desc:"Import OrcaSlicer preset bundles (.orca_printer / .orca_filament) and output a Printer profile.",
+    inputs: [], outputs:[{name:"profile", type:"profile"}],
+    initData: ()=>({ printerId:"", filamentId:"", processId:"" }),
+    render:(node, mount)=>{
+      const d=node.data;
+      const orca = ensureOrcaStore();
+      mount.innerHTML="";
+
+      const fileInput = document.createElement("input");
+      fileInput.type="file";
+      fileInput.multiple=true;
+      fileInput.accept=".orca_printer,.orca_filament,.zip,.json";
+      fileInput.style.display="none";
+      fileInput.addEventListener("change", async ()=>{
+        await importOrcaFilesFromInput(fileInput.files);
+        fileInput.value="";
+        rerenderNode(node.id);
+      });
+
+      const topRow = document.createElement("div");
+      topRow.style.display="flex";
+      topRow.style.gap="8px";
+      topRow.style.alignItems="center";
+      const btn = document.createElement("button");
+      btn.className="btn";
+      btn.textContent="Import Orca Bundles";
+      btn.addEventListener("click", ()=>fileInput.click());
+      const info = document.createElement("div");
+      info.className="hint";
+      info.textContent=`Loaded: ${orca.printers.length} printers • ${orca.filaments.length} filaments • ${orca.processes.length} processes`;
+      topRow.appendChild(btn);
+      mount.appendChild(topRow);
+      mount.appendChild(fileInput);
+      mount.appendChild(info);
+
+      const mkOpts = (list)=> list.map(e=>[e.id, e.name]);
+
+      mount.appendChild(grid2([
+        field("Printer preset", elSelect(d.printerId||"", [["","Auto"], ...mkOpts(orca.printers)], (v)=>{ d.printerId=v; saveState(); markDirtyAuto(); })),
+        field("Filament preset", elSelect(d.filamentId||"", [["","Auto"], ...mkOpts(orca.filaments)], (v)=>{ d.filamentId=v; saveState(); markDirtyAuto(); })),
+        field("Process preset", elSelect(d.processId||"", [["","Auto"], ...mkOpts(orca.processes)], (v)=>{ d.processId=v; saveState(); markDirtyAuto(); }))
+      ]));
+
+      const tip = document.createElement("div");
+      tip.className="hint";
+      tip.textContent="Tip: In OrcaSlicer use Export → Config Bundle / Filament Bundle, then import here. Connect this node's Profile output to Export → profile.";
+      mount.appendChild(tip);
+    },
+    evaluate:(node, ctx)=>{
+      const orca = ensureOrcaStore();
+      const d=node.data;
+      const mach = orcaFirst(orca.printers, d.printerId)?.obj || null;
+      const fil  = orcaFirst(orca.filaments, d.filamentId)?.obj || null;
+      const proc = orcaFirst(orca.processes, d.processId)?.obj || null;
+      const base = defaultPrinterFallback();
+      const profile = mapOrcaToPrinterProfile(mach, fil, proc, base);
+      return { profile };
+    }
+  }
+
+,"Note":{
+  title:"Note",
+  uiSchema:SCHEMA_NOTE,
+  desc:"Demo instructions / documentation. Does not affect the graph.",
+  tag:"docs",
+  inputs:[],
+  outputs:[],
+  initData:()=>({
+    title:"Demo note",
+    compact:false,
+    text:"Use this node to describe how the current demo is wired.\n\nTip: In Preview, use Role + Layer filters to inspect walls/infill/top/bottom.\n"
+  }),
+  render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
+  evaluate:(node, ctx)=>({})
+}
+
+,
+"Feature Paint":{
+  title:"Feature Paint",
+  tag:"modifier",
+  desc:"Rule-based feature overrides: recolor roles + speed/flow multipliers (like 'per feature' tuning).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({
+    rules:[
+      {name:"Slow outer-ish", when:'role=="walls" || role=="outer_wall"', role:"", speedMode:"mul", speedVal:0.75, flowMode:"mul", flowVal:1.00},
+      {name:"Boost top skins", when:'role=="top"', role:"", speedMode:"mul", speedVal:0.70, flowMode:"mul", flowVal:1.05},
+    ],
+    applyToTravel:true
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    const top = document.createElement("div");
+    top.className="row";
+    top.style.justifyContent="space-between";
+    top.style.gap="10px";
+    const left = document.createElement("div");
+    left.className="hint";
+    left.innerHTML = "<b style='color:var(--text)'>Feature Paint</b><div class='muted'>Rules run top→bottom. Use <code>role</code>, <code>layer</code>, <code>z</code>, <code>t</code>, <code>i</code>, <code>n</code>.</div>";
+    const add = document.createElement("button");
+    add.className="btn smallBtn";
+    add.textContent="+ Add rule";
+    add.addEventListener("click", ()=>{
+      d.rules.push({name:"New rule", when:"1", role:"", speedMode:"mul", speedVal:1, flowMode:"mul", flowVal:1});
+      markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+    });
+    top.appendChild(left); top.appendChild(add);
+    mount.appendChild(top);
+
+    const hdr = document.createElement("div");
+    hdr.className="ruleTable";
+    hdr.innerHTML = `
+      <div class="hdr">Name</div>
+      <div class="hdr">When (expression)</div>
+      <div class="hdr">Role set</div>
+      <div class="hdr">Speed</div>
+      <div class="hdr">Flow</div>
+      <div class="hdr"></div>
+    `;
+    mount.appendChild(hdr);
+
+    const roles = [
+      ["","(keep)"],
+      ["walls","walls"],
+      ["outer_wall","outer_wall"],
+      ["inner_wall","inner_wall"],
+      ["infill","infill"],
+      ["bottom","bottom"],
+      ["top","top"],
+      ["travel","travel"]
+    ];
+
+    const modes = [["none","—"],["mul","×"],["set","="]];
+
+    for(let idx=0; idx<d.rules.length; idx++){
+      const r = d.rules[idx];
+      const row = document.createElement("div");
+      row.className="ruleRow";
+
+      const grid = document.createElement("div");
+      grid.className="ruleTable";
+
+      const name = elText(r.name||"", v=>{ r.name=v; saveState(); }, "Rule name");
+      const when = elText(r.when||"1", v=>{ r.when=v; markDirtyAuto(); saveState(); }, 'e.g. role=="infill" && layer>10');
+      const roleSel = elSelect(String(r.role||""), roles, v=>{ r.role=v; markDirtyAuto(); saveState(); });
+      const sp = document.createElement("div");
+      sp.style.display="flex"; sp.style.gap="6px"; sp.style.alignItems="center";
+      const spMode = elSelect(String(r.speedMode||"mul"), modes, v=>{ r.speedMode=v; markDirtyAuto(); saveState(); });
+      const spVal  = elNumber(r.speedVal??1, v=>{ r.speedVal = v; markDirtyAuto(); saveState(); }, 0.01);
+      sp.appendChild(spMode); sp.appendChild(spVal);
+
+      const fl = document.createElement("div");
+      fl.style.display="flex"; fl.style.gap="6px"; fl.style.alignItems="center";
+      const flMode = elSelect(String(r.flowMode||"mul"), modes, v=>{ r.flowMode=v; markDirtyAuto(); saveState(); });
+      const flVal  = elNumber(r.flowVal??1, v=>{ r.flowVal=v; markDirtyAuto(); saveState(); }, 0.01);
+      fl.appendChild(flMode); fl.appendChild(flVal);
+
+      const del = document.createElement("button");
+      del.className="btn smallBtn";
+      del.textContent="✕";
+      del.addEventListener("click", ()=>{
+        d.rules.splice(idx,1);
+        markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+
+      grid.appendChild(name);
+      grid.appendChild(when);
+      grid.appendChild(roleSel);
+      grid.appendChild(sp);
+      grid.appendChild(fl);
+      grid.appendChild(del);
+
+      row.appendChild(grid);
+      mount.appendChild(row);
+    }
+
+    const opt = document.createElement("div");
+    opt.style.marginTop="10px";
+    opt.appendChild(field("Apply to travel points", elToggle(!!d.applyToTravel, v=>{ d.applyToTravel=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(opt);
+
+    const ex = document.createElement("div");
+    ex.className="hint";
+    ex.style.marginTop="8px";
+    ex.innerHTML = `
+      <div style="margin-bottom:6px"><b style="color:var(--text)">Examples</b></div>
+      <div>- Slow infill above layer 20: <code>role=="infill" && layer&gt;20</code></div>
+      <div>- Beef up top skins near the end: <code>role=="top" &amp;&amp; t&gt;0.8</code></div>
+      <div>- Only bottom: <code>role=="bottom"</code></div>
+    `;
+    mount.appendChild(ex);
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || null;
+    if(!Array.isArray(path) || path.length===0) return { out: [] };
+
+    const d=node.data;
+    const rules = Array.isArray(d.rules)? d.rules : [];
+    const compiled = [];
+    for(const r of rules){
+      let fn = null;
+      try{ fn = compileExpr(r.when||"1"); }catch(e){ fn = null; }
+      compiled.push({r, fn});
+    }
+
+    const out = path.map(pt=> pt ? ({...pt, meta: pt.meta ? ({...pt.meta}) : pt.meta}) : pt);
+    const n = out.length;
+
+    for(let i=0;i<n;i++){
+      const pt = out[i];
+      if(!pt) continue;
+      const t = (n<=1)? 0 : i/(n-1);
+      const x = isFinite(pt.x)? pt.x : (isFinite(pt.X)? pt.X : 0);
+      const y = isFinite(pt.y)? pt.y : (isFinite(pt.Y)? pt.Y : 0);
+      const z = isFinite(pt.z)? pt.z : 0;
+      const layer = isFinite(pt.layer)? pt.layer : (isFinite(pt.meta?.layer)? pt.meta.layer : inferLayer({z}, ctx.base?.layerHeight||0.2));
+      const role0 = String(pt.role || pt.meta?.role || "");
+      const isTravel = !!pt.travel;
+      const pmap = {...ctx.pmap, role: role0};
+      if(isTravel && !d.applyToTravel) continue;
+
+      for(const c of compiled){
+        if(!c.fn) continue;
+        let ok=false;
+        try{ ok = !!c.fn(t,i,n,x,y,z,layer,pmap,ctx.base); }catch(e){ ok=false; }
+        if(!ok) continue;
+
+        const r=c.r;
+        if(r.role){
+          pt.role = r.role;
+          if(pt.meta) pt.meta.role = r.role;
+        }
+
+        // speed
+        const sv = Number(r.speedVal);
+        if(r.speedMode==="mul" && isFinite(sv)){
+          pt.speedHint = (isFinite(pt.speedHint)? pt.speedHint : (ctx.base?.printSpeed||1800)) * sv;
+        }else if(r.speedMode==="set" && isFinite(sv)){
+          pt.speedHint = sv;
+        }
+
+        // flow
+        const fv = Number(r.flowVal);
+        if(r.flowMode==="mul" && isFinite(fv)){
+          pt.flowHint = (isFinite(pt.flowHint)? pt.flowHint : 1.0) * fv;
+        }else if(r.flowMode==="set" && isFinite(fv)){
+          pt.flowHint = fv;
+        }
+      }
+    }
+    return { out };
+  }
+},
+
+"Travel Optimize":{
+  title:"Travel Optimize",
+  tag:"modifier",
+  desc:"Greedy per-layer segment reordering to reduce travel time (experimental).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({ perLayer:true, keepFirst:true }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Per layer", elToggle(!!d.perLayer, v=>{ d.perLayer=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Keep first segment", elToggle(!!d.keepFirst, v=>{ d.keepFirst=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(dividerTiny());
+    const h=document.createElement("div");
+    h.className="hint";
+    h.innerHTML = "<div><b style='color:var(--text)'>Tip</b></div><div>Works best when the input path is segment pairs (travel→print) like the Slicer/Export machinePath.</div>";
+    mount.appendChild(h);
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || null;
+    if(!Array.isArray(path) || path.length<2) return { out: path||[] };
+
+    // Split into segments: (a travel) -> (b print) where b is extrusion endpoint.
+    const segs=[];
+    for(let i=1;i<path.length;i++){
+      const a=path[i-1], b=path[i];
+      if(!a||!b) continue;
+      const atr=!!a.travel, btr=!!b.travel;
+      if(atr && !btr){
+        const layer = isFinite(b.layer)? b.layer : (isFinite(b.meta?.layer)? b.meta.layer : inferLayer(b, ctx.base?.layerHeight||0.2));
+        segs.push({a, b, layer});
+      }
+    }
+    if(segs.length<2) return { out: path };
+
+    const byLayer = new Map();
+    for(const s of segs){
+      const k = node.data.perLayer ? s.layer : 0;
+      if(!byLayer.has(k)) byLayer.set(k, []);
+      byLayer.get(k).push(s);
+    }
+
+    const out=[];
+    const layers = Array.from(byLayer.keys()).sort((a,b)=>a-b);
+    for(const k of layers){
+      const list = byLayer.get(k);
+      if(!list || list.length===0) continue;
+
+      const used = new Array(list.length).fill(false);
+      let cur = list[0];
+      if(node.data.keepFirst){
+        used[0]=true;
+        out.push({...cur.a},{...cur.b});
+      }else{
+        // pick nearest to (0,0)
+        let best=0, bd=Infinity;
+        for(let i=0;i<list.length;i++){
+          const s=list[i];
+          const dx=(s.a.X??s.a.x??0), dy=(s.a.Y??s.a.y??0);
+          const dd=dx*dx+dy*dy;
+          if(dd<bd){ bd=dd; best=i; }
+        }
+        used[best]=true;
+        cur=list[best];
+        out.push({...cur.a},{...cur.b});
+      }
+
+      // greedy nearest next by travel start
+      for(let step=0; step<list.length-1; step++){
+        const cx = cur.b.X ?? cur.b.x ?? 0;
+        const cy = cur.b.Y ?? cur.b.y ?? 0;
+        let best=-1, bd=Infinity;
+        for(let i=0;i<list.length;i++){
+          if(used[i]) continue;
+          const s=list[i];
+          const sx = s.a.X ?? s.a.x ?? 0;
+          const sy = s.a.Y ?? s.a.y ?? 0;
+          const dx=sx-cx, dy=sy-cy;
+          const dd=dx*dx+dy*dy;
+          if(dd<bd){ bd=dd; best=i; }
+        }
+        if(best<0) break;
+        used[best]=true;
+        cur=list[best];
+        out.push({...cur.a},{...cur.b});
+      }
+    }
+
+    // Preserve any non-segment points (fallback: if mismatch, just return reordered segments)
+    return { out };
+  }
+},
+
+"G-code Post":{
+  title:"G-code Post",
+  tag:"output",
+  desc:"Post-process G-code: prepend/append + find/replace (regex optional).",
+  inputs:[{name:"in", type:"gcode"}],
+  outputs:[{name:"out", type:"gcode"}],
+  initData:()=>({
+    prepend:"; --- POST: prepend ---\n",
+    append:"\n; --- POST: append ---\n",
+    rules:[
+      {find:"; G-code Studio export", repl:"; G-code Studio export (post-processed)", regex:false, enabled:true},
+      {find:"M104 S", repl:"M104 S", regex:false, enabled:true}
+    ]
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Prepend", elTextarea(d.prepend||"", v=>{ d.prepend=v; markDirtyAuto(); saveState(); }, 4)));
+    mount.appendChild(field("Append", elTextarea(d.append||"", v=>{ d.append=v; markDirtyAuto(); saveState(); }, 4)));
+    mount.appendChild(dividerTiny());
+
+    const title=document.createElement("div");
+    title.className="row";
+    title.style.justifyContent="space-between";
+    title.innerHTML = "<b style='color:var(--text)'>Find / Replace</b>";
+    const add=document.createElement("button");
+    add.className="btn smallBtn";
+    add.textContent="+";
+    add.addEventListener("click", ()=>{
+      d.rules.push({find:"", repl:"", regex:false, enabled:true});
+      markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+    });
+    title.appendChild(add);
+    mount.appendChild(title);
+
+    for(let i=0;i<d.rules.length;i++){
+      const r=d.rules[i];
+      const box=document.createElement("div");
+      box.className="ruleRow";
+      const grid=document.createElement("div");
+      grid.style.display="grid";
+      grid.style.gridTemplateColumns="1fr 1fr";
+      grid.style.gap="8px";
+      grid.appendChild(field("Find", elText(r.find||"", v=>{ r.find=v; markDirtyAuto(); saveState(); }, "text / regex")));
+      grid.appendChild(field("Replace", elText(r.repl||"", v=>{ r.repl=v; markDirtyAuto(); saveState(); }, "replacement")));
+      box.appendChild(grid);
+
+      const row=document.createElement("div");
+      row.className="row";
+      row.style.justifyContent="space-between";
+      row.style.marginTop="6px";
+      row.appendChild(field("Enabled", elToggle(!!r.enabled, v=>{ r.enabled=!!v; markDirtyAuto(); saveState(); })));
+      row.appendChild(field("Regex", elToggle(!!r.regex, v=>{ r.regex=!!v; markDirtyAuto(); saveState(); })));
+      const del=document.createElement("button");
+      del.className="btn smallBtn";
+      del.textContent="✕";
+      del.addEventListener("click", ()=>{
+        d.rules.splice(i,1);
+        markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+      row.appendChild(del);
+      box.appendChild(row);
+      mount.appendChild(box);
+    }
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const g = String(inp?.out || inp?.gcode || inp || "");
+    if(!g) return { out:"" };
+    const d=node.data;
+    let txt = g;
+    for(const r of (d.rules||[])){
+      if(!r?.enabled) continue;
+      const f = String(r.find||"");
+      const rep = String(r.repl||"");
+      if(!f) continue;
+      try{
+        if(r.regex){
+          const re = new RegExp(f, "g");
+          txt = txt.replace(re, rep);
+        }else{
+          txt = txt.split(f).join(rep);
+        }
+      }catch(_){}
+    }
+    txt = String(d.prepend||"") + txt + String(d.append||"");
+    return { out: txt };
+  }
+},
+
+"Inspector":{
+  title:"Inspector",
+  tag:"analysis",
+  desc:"Quick debug: counts, layers, roles, bounds. Great for demos.",
+  inputs:[{name:"path", type:"path"},{name:"mesh", type:"mesh"},{name:"gcode", type:"gcode"},{name:"profile", type:"profile"}],
+  outputs:[],
+  initData:()=>({ showGcodePreview:false, gcodeChars:3000 }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    const box=document.createElement("div");
+    box.className="hint";
+    const stats = node.runtime?.stats || null;
+    box.innerHTML = stats ? mdToHtml(stats) : "<div class='muted'>Run graph to populate inspector.</div>";
+    mount.appendChild(box);
+    mount.appendChild(field("Show G-code preview", elToggle(!!d.showGcodePreview, v=>{ d.showGcodePreview=!!v; saveState(); markDirtyAuto(); })));
+    if(d.showGcodePreview){
+      const pre=document.createElement("pre");
+      pre.className="gcodePreview";
+      pre.style.maxHeight="180px";
+      pre.style.overflow="auto";
+      pre.textContent = String(node.runtime?.gcodePreview||"");
+      mount.appendChild(pre);
+    }
+  },
+  evaluate:(node, ctx)=>{
+    const inpP = ctx.getInput(node.id,"path");
+    const inpM = ctx.getInput(node.id,"mesh");
+    const inpG = ctx.getInput(node.id,"gcode");
+    const inpPr = ctx.getInput(node.id,"profile");
+    const path = (inpP?.out || inpP?.path || inpP) || [];
+    const mesh = (inpM?.mesh || inpM?.out || inpM) || null;
+    const gcode = String(inpG?.out || inpG?.gcode || inpG || "");
+    const prof = (inpPr?.profile || inpPr?.out || inpPr) || null;
+
+    let nPts = Array.isArray(path) ? path.filter(Boolean).length : 0;
+    let bounds = null;
+    let layers = new Set();
+    let roles = new Map();
+    if(Array.isArray(path)){
+      let minx=Infinity,miny=Infinity,minz=Infinity,maxx=-Infinity,maxy=-Infinity,maxz=-Infinity;
+      for(const pt of path){
+        if(!pt) continue;
+        const x = isFinite(pt.X)? pt.X : (isFinite(pt.x)? pt.x : NaN);
+        const y = isFinite(pt.Y)? pt.Y : (isFinite(pt.y)? pt.y : NaN);
+        const z = isFinite(pt.z)? pt.z : NaN;
+        if(isFinite(x)&&isFinite(y)&&isFinite(z)){
+          minx=Math.min(minx,x); miny=Math.min(miny,y); minz=Math.min(minz,z);
+          maxx=Math.max(maxx,x); maxy=Math.max(maxy,y); maxz=Math.max(maxz,z);
+        }
+        const layer = isFinite(pt.layer)? pt.layer : (isFinite(pt.meta?.layer)? pt.meta.layer : null);
+        if(layer!=null) layers.add(layer);
+        const role = String(pt.role || pt.meta?.role || (pt.travel?"travel":""));
+        roles.set(role, (roles.get(role)||0)+1);
+      }
+      if(isFinite(minx)) bounds = {minx,miny,minz,maxx,maxy,maxz};
+    }
+
+    const roleList = Array.from(roles.entries()).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`- **${k||"(none)"}**: ${v} pts`).join("\n");
+    const txt = `## Inspector\n`+
+      `- **Points**: ${nPts}\n`+
+      `- **Layers**: ${layers.size}\n`+
+      (bounds? `- **Bounds**: X ${bounds.minx.toFixed(1)}..${bounds.maxx.toFixed(1)}, Y ${bounds.miny.toFixed(1)}..${bounds.maxy.toFixed(1)}, Z ${bounds.minz.toFixed(1)}..${bounds.maxz.toFixed(1)}\n` : "")+
+      (prof? `- **Printer**: ${prof.name||"Profile"} (nozzle ${prof.nozzle||"?"} / bed ${prof.bedW||"?"}×${prof.bedD||"?"})\n` : "")+
+      `\n### Roles\n${roleList || "- (none)"}`;
+
+    node.runtime = node.runtime || {};
+    node.runtime.stats = txt;
+    node.runtime.gcodePreview = gcode ? gcode.slice(0, Math.max(200, Math.floor(node.data.gcodeChars||3000))) : "";
+    return {};
+  }
+}
+,
+"Z Warp":{
+  title:"Z Warp",
+  tag:"modifier",
+  desc:"Non-planar effect: warp Z by sine / ripple / noise based on X,Y (experimental).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({
+    mode:"sine2d",
+    amplitude:1.2,
+    wavelength:40,
+    phaseDeg:0,
+    axis:"xy",
+    affectTravel:false,
+    clampToBed:true,
+    zMin:0
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Mode", elSelect(d.mode||"sine2d", [
+      ["sine2d","Sine 2D (sin(x)+cos(y))"],
+      ["ripple","Radial ripple"],
+      ["tilt","Tilt plane (ax+by)"]
+    ], v=>{ d.mode=v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Amplitude (mm)", elNumber(d.amplitude??1.2, v=>{ d.amplitude=v; markDirtyAuto(); saveState(); }, 0.01)));
+    mount.appendChild(field("Wavelength (mm)", elNumber(d.wavelength??40, v=>{ d.wavelength=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Phase (deg)", elNumber(d.phaseDeg??0, v=>{ d.phaseDeg=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Affect travel", elToggle(!!d.affectTravel, v=>{ d.affectTravel=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Clamp to bed", elToggle(!!d.clampToBed, v=>{ d.clampToBed=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Min Z", elNumber(d.zMin??0, v=>{ d.zMin=v; markDirtyAuto(); saveState(); }, 0.01)));
+    const h=document.createElement("div");
+    h.className="hint";
+    h.style.marginTop="8px";
+    h.innerHTML = "<b style='color:var(--text)'>Tip</b><div>Put this AFTER a planar slicer to turn planar top layers into a wavy non-planar finish. Use small amplitude (0.3–1.5mm).</div>";
+    mount.appendChild(h);
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || null;
+    if(!Array.isArray(path) || path.length===0) return { out: [] };
+
+    const d=node.data;
+    const A = Number(d.amplitude||0);
+    const L = Math.max(1e-6, Number(d.wavelength||40));
+    const ph = (Number(d.phaseDeg||0) * Math.PI/180);
+    const k = (2*Math.PI)/L;
+
+    const out = path.map(pt=>{
+      if(!pt) return pt;
+      const isTravel = !!pt.travel;
+      if(isTravel && !d.affectTravel) return pt;
+      const x = isFinite(pt.X)? pt.X : (isFinite(pt.x)? pt.x : 0);
+      const y = isFinite(pt.Y)? pt.Y : (isFinite(pt.y)? pt.y : 0);
+      const z0 = isFinite(pt.z)? pt.z : 0;
+
+      let dz=0;
+      if(d.mode==="sine2d"){
+        dz = A*(Math.sin(k*x + ph) + Math.cos(k*y + ph))*0.5;
+      }else if(d.mode==="ripple"){
+        const r = Math.hypot(x, y);
+        dz = A*Math.sin(k*r + ph);
+      }else if(d.mode==="tilt"){
+        dz = A*((x+y)/L);
+      }
+      let z = z0 + dz;
+      if(d.clampToBed){
+        const zmin = Number(d.zMin||0);
+        if(z < zmin) z = zmin;
+      }
+      return {...pt, z};
+    });
+
+    return { out };
+  }
+},
+
+"Layer Schedule":{
+  title:"Layer Schedule",
+  tag:"rules",
+  desc:"Generate Rules from simple schedules (speed/flow/temp/fan by layer or height).",
+  inputs:[{name:"profile", type:"profile"}],
+  outputs:[{name:"rules", type:"rules"}],
+  initData:()=>({
+    by:"layer",
+    speed: { enabled:true, points:[ {x:0,y:1.0}, {x:40,y:1.0} ] },  // multiplier
+    flow:  { enabled:false, points:[ {x:0,y:1.0}, {x:40,y:1.0} ] }, // multiplier
+    temp:  { enabled:false, points:[ {x:0,y:210}, {x:40,y:210} ] }, // °C
+    fan:   { enabled:false, points:[ {x:0,y:0}, {x:5,y:100}, {x:40,y:100} ] }, // %
+    clampSpeedMin: 1,
+    clampSpeedMax: 60000
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Schedule axis", elSelect(d.by||"layer", [["layer","Layer index"],["z","Z height (mm)"]], v=>{ d.by=v; markDirtyAuto(); saveState(); })));
+
+    function ptsEditor(label, obj, yLabel){
+      const wrap=document.createElement("div");
+      wrap.className="ruleRow";
+      const head=document.createElement("div");
+      head.className="row";
+      head.style.justifyContent="space-between";
+      const left=document.createElement("div");
+      left.innerHTML = `<b style="color:var(--text)">${label}</b> <span class="muted">${yLabel}</span>`;
+      const en=document.createElement("div");
+      en.appendChild(field("Enabled", elToggle(!!obj.enabled, v=>{ obj.enabled=!!v; markDirtyAuto(); saveState(); })));
+      head.appendChild(left); head.appendChild(en);
+      wrap.appendChild(head);
+
+      const grid=document.createElement("div");
+      grid.style.display="grid";
+      grid.style.gridTemplateColumns="1fr 1fr 32px";
+      grid.style.gap="8px";
+      grid.style.alignItems="center";
+      (obj.points||[]).forEach((p,i)=>{
+        const x = elNumber(p.x??0, v=>{ p.x=v; markDirtyAuto(); saveState(); }, 1);
+        const y = elNumber(p.y??0, v=>{ p.y=v; markDirtyAuto(); saveState(); }, 0.01);
+        const del=document.createElement("button");
+        del.className="btn smallBtn";
+        del.textContent="✕";
+        del.addEventListener("click", ()=>{
+          obj.points.splice(i,1);
+          markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+        });
+        grid.appendChild(x); grid.appendChild(y); grid.appendChild(del);
+      });
+      wrap.appendChild(grid);
+
+      const add=document.createElement("button");
+      add.className="btn smallBtn";
+      add.style.marginTop="8px";
+      add.textContent="+ Add point";
+      add.addEventListener("click", ()=>{
+        obj.points.push({x:(obj.points?.length? (obj.points[obj.points.length-1].x+10):0), y:(obj.points?.length? obj.points[obj.points.length-1].y:1)});
+        markDirtyAuto(); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+      wrap.appendChild(add);
+      return wrap;
+    }
+
+    mount.appendChild(ptsEditor("Speed", d.speed, "(multiplier)"));
+    mount.appendChild(ptsEditor("Flow", d.flow, "(multiplier)"));
+    mount.appendChild(ptsEditor("Temp", d.temp, "(°C)"));
+    mount.appendChild(ptsEditor("Fan", d.fan, "(%)"));
+
+    const ex=document.createElement("div");
+    ex.className="hint";
+    ex.style.marginTop="8px";
+    ex.innerHTML = "<b style='color:var(--text)'>Tip</b><div>Connect this to Export → rules. You can also stack with a Rules node (Feature Paint etc.) by adding another modifier in between.</div>";
+    mount.appendChild(ex);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+
+    const interp = (pts, x)=>{
+      if(!pts || pts.length===0) return 0;
+      const a = pts.slice().sort((p,q)=>p.x-q.x);
+      if(x <= a[0].x) return a[0].y;
+      if(x >= a[a.length-1].x) return a[a.length-1].y;
+      for(let i=1;i<a.length;i++){
+        if(x <= a[i].x){
+          const p0=a[i-1], p1=a[i];
+          const t=(x-p0.x)/Math.max(1e-9,(p1.x-p0.x));
+          return p0.y + (p1.y-p0.y)*t;
+        }
+      }
+      return a[a.length-1].y;
+    };
+
+    const by = d.by || "layer";
+    const base = ctx.base || baseFromProfile(ctx.defaultProfile || {});
+    const speedFn = (t,i,n,x,y,z,layer,role)=> {
+      const ax = (by==="z") ? z : layer;
+      const mul = d.speed?.enabled ? Number(interp(d.speed.points, ax)) : 1.0;
+      const v = Number((isFinite(base.printSpeed)? base.printSpeed : 1800) * mul);
+      return clamp(v, Number(d.clampSpeedMin||1), Number(d.clampSpeedMax||60000));
+    };
+    const flowFn = (t,i,n,x,y,z,layer,role)=> {
+      const ax = (by==="z") ? z : layer;
+      const mul = d.flow?.enabled ? Number(interp(d.flow.points, ax)) : 1.0;
+      return clamp(mul, 0, 20);
+    };
+    const tempFn = (t,i,n,x,y,z,layer,role)=> {
+      const ax = (by==="z") ? z : layer;
+      const v = d.temp?.enabled ? Number(interp(d.temp.points, ax)) : Number(base.tempNozzle||210);
+      return clamp(v, 0, 400);
+    };
+    const fanFn = (t,i,n,x,y,z,layer,role)=> {
+      const ax = (by==="z") ? z : layer;
+      const v = d.fan?.enabled ? Number(interp(d.fan.points, ax)) : Number(base.fan||0);
+      return clamp(v, 0, 100);
+    };
+
+    return {
+      rules:{
+        enableSpeed: !!d.speed?.enabled,
+        enableFlow:  !!d.flow?.enabled,
+        enableTemp:  !!d.temp?.enabled,
+        enableFan:   !!d.fan?.enabled,
+        speedFn, flowFn, tempFn, fanFn
+      }
+    };
+  }
+},
+
+"Calibration Tower":{
+  title:"Calibration Tower",
+  tag:"rules",
+  desc:"Auto-generate step changes (temp/flow/speed) by height or layer (tower testing).",
+  inputs:[{name:"profile", type:"profile"}],
+  outputs:[{name:"rules", type:"rules"}],
+  initData:()=>({
+    by:"z",
+    target:"temp",
+    start:220,
+    step:-5,
+    every:5,      // mm or layers
+    min:180,
+    max:260
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Axis", elSelect(d.by||"z", [["z","Z height (mm)"],["layer","Layer index"]], v=>{ d.by=v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Target", elSelect(d.target||"temp", [["temp","Nozzle temp (°C)"],["flow","Flow multiplier"],["speed","Speed multiplier"],["fan","Fan %"]], v=>{ d.target=v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Start", elNumber(d.start??220, v=>{ d.start=v; markDirtyAuto(); saveState(); }, 0.01)));
+    mount.appendChild(field("Step", elNumber(d.step??-5, v=>{ d.step=v; markDirtyAuto(); saveState(); }, 0.01)));
+    mount.appendChild(field("Every", elNumber(d.every??5, v=>{ d.every=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Clamp min", elNumber(d.min??0, v=>{ d.min=v; markDirtyAuto(); saveState(); }, 0.01)));
+    mount.appendChild(field("Clamp max", elNumber(d.max??999, v=>{ d.max=v; markDirtyAuto(); saveState(); }, 0.01)));
+
+    const h=document.createElement("div");
+    h.className="hint";
+    h.style.marginTop="8px";
+    h.innerHTML = "<b style='color:var(--text)'>Use</b><div>Connect to Export → rules. Pair with a tall primitive (tower). For temp towers: by Z, every 5mm, step -5°C.</div>";
+    mount.appendChild(h);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const by = d.by || "z";
+    const every = Math.max(1e-6, Number(d.every||5));
+    const start = Number(d.start||0);
+    const step = Number(d.step||0);
+    const mn = Number(d.min ?? -1e9);
+    const mx = Number(d.max ??  1e9);
+    const tgt = d.target || "temp";
+    const base = ctx.base || baseFromProfile(ctx.defaultProfile || {});
+
+    const stepVal = (ax)=>{
+      const idx = Math.floor(ax / every);
+      return clamp(start + idx*step, mn, mx);
+    };
+
+    const rules = { enableSpeed:false, enableFlow:false, enableTemp:false, enableFan:false };
+    if(tgt==="temp"){
+      rules.enableTemp=true;
+      rules.tempFn = (t,i,n,x,y,z,layer)=> stepVal(by==="z"? z : layer);
+    }else if(tgt==="fan"){
+      rules.enableFan=true;
+      rules.fanFn = (t,i,n,x,y,z,layer)=> stepVal(by==="z"? z : layer);
+    }else if(tgt==="flow"){
+      rules.enableFlow=true;
+      rules.flowFn = (t,i,n,x,y,z,layer)=> stepVal(by==="z"? z : layer);
+    }else if(tgt==="speed"){
+      rules.enableSpeed=true;
+      rules.speedFn = (t,i,n,x,y,z,layer)=> (base.printSpeed||1800) * stepVal(by==="z"? z : layer);
+    }
+    return { rules };
+  }
+}
+,
+"FullControl Model":{
+  title:"FullControl Model",
+  tag:"generator",
+  desc:"Procedural FullControl-style designs (inspired by the FullControl online library). Outputs a toolpath directly (no mesh slicing).",
+  inputs:[{name:"profile", type:"profile"}],
+  outputs:[{name:"path", type:"path"}],
+  initData:()=>({
+    model:"ripple_vase",
+    layerHeight:0.24,
+    // common
+    centerX:0, centerY:0,
+    height:80,
+    // ripple vase
+    radius:28,
+    rippleAmp:2.5,
+    ripples:9,
+    twistDeg:0,
+    vaseMode:true,
+    // pin support
+    pinBaseR:4,
+    pinTopR:0.7,
+    pinTurns:3,
+    // polar fractions
+    denom:12,
+    numer:5,
+    rings:3,
+    ringStep:8,
+    // hex adapter
+    hexAcross:34,
+    hexWall:3,
+    // nonplanar spacer
+    spacerR:18,
+    spacerWall:3,
+    spacerWaveAmp:0.8,
+    spacerWaves:8,
+    // anyangle stand
+    standW:70,
+    standD:60,
+    standAngleDeg:55,
+    standPitch:6,
+    // lattice cylinder
+    latRadius:30,
+    latPitch:6,
+    latAngleDeg:60
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Model", elSelect(d.model||"ripple_vase", [
+      ["ripple_vase","Ripple Vase (spiral wall)"],
+      ["pin_support","Pin Support Challenge (taper)"],
+      ["polar_fractions","Fractional Engine (polar spokes)"],
+      ["hex_adapter","Hex Adapter (ring)"],
+      ["nonplanar_spacer","Nonplanar Spacer (wavy ring)"],
+      ["anyangle_phone_stand","AnyAngle Phone Stand (slope lattice)"],
+      ["lattice_cylinder","Lattice Cylinder (helical grid)"]
+    ], v=>{ d.model=v; markDirtyAuto(); saveState(); })));
+
+    mount.appendChild(field("Layer height", elNumber(d.layerHeight??0.24, v=>{ d.layerHeight=v; markDirtyAuto(); saveState(); }, 0.01)));
+    mount.appendChild(field("Center X", elNumber(d.centerX??0, v=>{ d.centerX=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Center Y", elNumber(d.centerY??0, v=>{ d.centerY=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Height", elNumber(d.height??80, v=>{ d.height=v; markDirtyAuto(); saveState(); }, 0.1)));
+
+    const group=document.createElement("div");
+    group.className="ruleRow";
+    group.style.marginTop="8px";
+
+    function addRow(lbl, el){ group.appendChild(field(lbl, el)); }
+
+    if(d.model==="ripple_vase"){
+      addRow("Radius", elNumber(d.radius??28, v=>{ d.radius=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Ripple amp", elNumber(d.rippleAmp??2.5, v=>{ d.rippleAmp=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Ripples", elNumber(d.ripples??9, v=>{ d.ripples=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Twist (deg)", elNumber(d.twistDeg??0, v=>{ d.twistDeg=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Vase mode", elToggle(!!d.vaseMode, v=>{ d.vaseMode=!!v; markDirtyAuto(); saveState(); }));
+      const tip=document.createElement("div");
+      tip.className="hint";
+      tip.style.marginTop="8px";
+      tip.innerHTML = "<b style='color:var(--text)'>Tip</b><div>Use 0% infill (path-driven). Pair with Z Warp for non-planar skins.</div>";
+      group.appendChild(tip);
+    }else if(d.model==="pin_support"){
+      addRow("Base radius", elNumber(d.pinBaseR??4, v=>{ d.pinBaseR=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Top radius", elNumber(d.pinTopR??0.7, v=>{ d.pinTopR=v; markDirtyAuto(); saveState(); }, 0.05));
+      addRow("Turns", elNumber(d.pinTurns??3, v=>{ d.pinTurns=v; markDirtyAuto(); saveState(); }, 1));
+    }else if(d.model==="polar_fractions"){
+      addRow("Denominator", elNumber(d.denom??12, v=>{ d.denom=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Numerator", elNumber(d.numer??5, v=>{ d.numer=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Rings", elNumber(d.rings??3, v=>{ d.rings=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Ring step", elNumber(d.ringStep??8, v=>{ d.ringStep=v; markDirtyAuto(); saveState(); }, 0.1));
+    
+}else if(d.model==="hex_adapter"){
+  addRow("Across flats", elNumber(d.hexAcross??34, v=>{ d.hexAcross=v; markDirtyAuto(); saveState(); }, 0.1));
+  addRow("Wall (mm)", elNumber(d.hexWall??3, v=>{ d.hexWall=v; markDirtyAuto(); saveState(); }, 0.1));
+}else if(d.model==="lattice_cylinder"){
+  addRow("Radius", elNumber(d.latRadius??30, v=>{ d.latRadius=v; markDirtyAuto(); saveState(); }, 0.1));
+  addRow("Pitch", elNumber(d.latPitch??6, v=>{ d.latPitch=v; markDirtyAuto(); saveState(); }, 0.1));
+  addRow("Angle (deg)", elNumber(d.latAngleDeg??60, v=>{ d.latAngleDeg=v; markDirtyAuto(); saveState(); }, 1));
+}
+mount.appendChild(group);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const lh = Math.max(0.01, Number(d.layerHeight||0.24));
+    const cx = Number(d.centerX||0), cy = Number(d.centerY||0);
+    const H  = Math.max(lh, Number(d.height||80));
+    const base = ctx.base || baseFromProfile(ctx.getInput(node.id, "profile")?.profile || ctx.defaultProfile || {});
+    const Nlayers = Math.max(1, Math.ceil(H / lh));
+
+    const pts=[];
+    const pushPt=(X,Y,z,role,travel=false,layer=0)=>{ pts.push({X,Y,z,role,travel,layer}); };
+
+    const circle=(r, z, role, layer, phase=0, segs=120)=>{
+      for(let i=0;i<=segs;i++){
+        const t=i/segs;
+        const a=phase + t*Math.PI*2;
+        pushPt(cx + r*Math.cos(a), cy + r*Math.sin(a), z, role, false, layer);
+      }
+    };
+
+    const line=(x0,y0,x1,y1,z,role,layer,steps=40)=>{
+      for(let i=0;i<=steps;i++){
+        const t=i/steps;
+        pushPt(cx + x0 + (x1-x0)*t, cy + y0 + (y1-y0)*t, z, role, false, layer);
+      }
+    };
+
+    if(d.model==="ripple_vase"){
+      const R = Math.max(0.1, Number(d.radius||28));
+      const A = Number(d.rippleAmp||0);
+      const rip = Math.max(1, Math.floor(Number(d.ripples||9)));
+      const twist = (Number(d.twistDeg||0) * Math.PI/180);
+      const vaseMode = !!d.vaseMode;
+
+      if(vaseMode){
+        // continuous spiral: one loop per layer
+        const loops = Nlayers;
+        const segPerLoop = 180;
+        const totalSeg = loops*segPerLoop;
+        for(let i=0;i<=totalSeg;i++){
+          const u=i/totalSeg;
+          const z = u*H;
+          const layer = Math.floor(z/lh);
+          const theta = u*loops*Math.PI*2;
+          const ph = theta*rip + twist*u*loops*2*Math.PI;
+          const r = R + A*Math.sin(ph);
+          pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
+        }
+      }else{
+        // discrete per-layer ring
+        for(let L=0; L<Nlayers; L++){
+          const z = L*lh;
+          const phase = twist*(L/(Nlayers-1||1))*Math.PI*2;
+          const segs=180;
+          for(let i=0;i<=segs;i++){
+            const t=i/segs;
+            const theta=t*Math.PI*2;
+            const r = R + A*Math.sin(theta*rip + phase);
+            pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, L);
+          }
+        }
+      }
+    }else if(d.model==="pin_support"){
+      const r0 = Math.max(0.2, Number(d.pinBaseR||4));
+      const r1 = Math.max(0.05, Number(d.pinTopR||0.7));
+      const turns = Math.max(1, Math.floor(Number(d.pinTurns||3)));
+      const segs = Nlayers*90;
+      for(let i=0;i<=segs;i++){
+        const u=i/segs;
+        const z=u*H;
+        const layer=Math.floor(z/lh);
+        const r = r0 + (r1-r0)*u;
+        const theta = u*turns*Math.PI*2;
+        pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
+      }
+      // tiny cap circle
+      circle(r1, H, "top", Nlayers-1, 0, 60);
+    }else if(d.model==="polar_fractions"){
+      const denom = Math.max(1, Math.floor(Number(d.denom||12)));
+      const numer = clamp(Math.floor(Number(d.numer||5)), 0, denom);
+      const rings = Math.max(1, Math.floor(Number(d.rings||3)));
+      const step = Math.max(0.1, Number(d.ringStep||8));
+      for(let L=0; L<Nlayers; L++){
+        const z=L*lh;
+        // rings
+        for(let r=1; r<=rings; r++){
+          circle(r*step, z, "infill", L, 0, 120);
+        }
+        // spokes
+        for(let i=0;i<numer;i++){
+          const a = (i/denom)*Math.PI*2;
+          const x1 = Math.cos(a)*rings*step;
+          const y1 = Math.sin(a)*rings*step;
+          line(0,0,x1,y1,z,"wall",L,60);
+        }
+      }
+
+}else if(d.model==="nonplanar_spacer"){
+  const R = Math.max(0.2, Number(d.spacerR||18));
+  const wall = Math.max(0.2, Number(d.spacerWall||3));
+  const A = Number(d.spacerWaveAmp||0);
+  const waves = Math.max(1, Math.floor(Number(d.spacerWaves||8)));
+  const Rout = R + wall*0.5;
+  const Rin = Math.max(0.1, R - wall*0.5);
+
+  // one continuous nonplanar-ish spiral wall between bottom and top
+  const loops = Math.max(2, Nlayers);
+  const segPer = 200;
+  const total = loops*segPer;
+  for(let i=0;i<=total;i++){
+    const u=i/total;
+    const z0 = u*H;
+    const layer = Math.floor(z0/lh);
+    const theta = u*loops*Math.PI*2;
+    const z = z0 + A*Math.sin(theta*waves);
+    const r = Rout;
+    pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
+  }
+  // inner wall (planar rings)
+  for(let L=0; L<Nlayers; L++){
+    const z=L*lh;
+    for(let i=0;i<=120;i++){
+      const t=i/120;
+      const a=t*Math.PI*2;
+      pushPt(cx + Rin*Math.cos(a), cy + Rin*Math.sin(a), z, "inner_wall", false, L);
+    }
+  }
+
+}else if(d.model==="anyangle_phone_stand"){
+  const W = Math.max(5, Number(d.standW||70));
+  const D = Math.max(5, Number(d.standD||60));
+  const ang = clamp(Number(d.standAngleDeg||55), 5, 85) * Math.PI/180;
+  const pitch = Math.max(1, Number(d.standPitch||6));
+  const slope = Math.tan(ang);
+
+  // A sloped lattice "ramp": z increases with Y to approximate an any-angle stand surface.
+  // Build in multiple layers, but each layer prints a nonplanar-ish grid within that band.
+  const halfW = W*0.5;
+  const stepsX = Math.max(2, Math.floor(W/pitch));
+  const stepsY = Math.max(2, Math.floor(D/pitch));
+
+  for(let L=0; L<Nlayers; L++){
+    const zBase=L*lh;
+    const y0 = (L/Nlayers) * D;
+    const y1 = ((L+1)/Nlayers) * D;
+    // zig lines across width
+    for(let j=0;j<=stepsY;j++){
+      const y = y0 + (j/stepsY)*(y1-y0);
+      const z = zBase + y*slope*0.05; // small slope per layer band (keeps within sane Z)
+      const dir = (j%2===0) ? 1 : -1;
+      for(let i=0;i<=stepsX;i++){
+        const t = dir===1 ? i/stepsX : 1-(i/stepsX);
+        const x = -halfW + t*W;
+        pushPt(cx + x, cy + y, z, "infill", false, L);
+      }
+    }
+    // outline rectangle (planar for stability)
+    const zO = zBase;
+    line(-halfW, 0,  halfW, 0, zO, "wall", L, 40);
+    line( halfW, 0,  halfW, D, zO, "wall", L, 40);
+    line( halfW, D, -halfW, D, zO, "wall", L, 40);
+    line(-halfW, D, -halfW, 0, zO, "wall", L, 40);
+  }
+
+}else if(d.model==="lattice_cylinder"){
+      const R = Math.max(1, Number(d.latRadius||30));
+      const pitch = Math.max(lh, Number(d.latPitch||6));
+      const ang = (Number(d.latAngleDeg||60) * Math.PI/180);
+      // two helical families
+      const seg = Nlayers*80;
+      const turns = H / pitch;
+      for(let fam=0; fam<2; fam++){
+        const sign = fam===0 ? 1 : -1;
+        const phase0 = fam===0 ? 0 : Math.PI/6;
+        for(let i=0;i<=seg;i++){
+          const u=i/seg;
+          const z=u*H;
+          const layer=Math.floor(z/lh);
+          const theta = phase0 + u*turns*Math.PI*2*sign;
+          // slight angle bias
+          const r = R + 0.0;
+          pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
+        }
+      }
+    }
+
+    // fix JS injection: remove python math usage and hex adapter placeholder by post-processing below
+    return { path: pts, out: pts };
+  }
+},
+
+"Polar Array":{
+  title:"Polar Array",
+  tag:"modifier",
+  desc:"Replicate a path around a center by polar array (like FullControl polar repeat).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({
+    copies:6,
+    centerX:0,
+    centerY:0,
+    rotateDeg:0,
+    merge:false
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Copies", elNumber(d.copies??6, v=>{ d.copies=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Center X", elNumber(d.centerX??0, v=>{ d.centerX=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Center Y", elNumber(d.centerY??0, v=>{ d.centerY=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Rotation (deg)", elNumber(d.rotateDeg??0, v=>{ d.rotateDeg=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Merge (no travels)", elToggle(!!d.merge, v=>{ d.merge=!!v; markDirtyAuto(); saveState(); })));
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || [];
+    if(!Array.isArray(path) || path.length===0) return { out: [] };
+
+    const d=node.data;
+    const n = Math.max(1, Math.floor(Number(d.copies||1)));
+    const cx = Number(d.centerX||0), cy=Number(d.centerY||0);
+    const baseRot = (Number(d.rotateDeg||0) * Math.PI/180);
+
+    const out=[];
+    for(let k=0;k<n;k++){
+      const a = baseRot + (k/n)*Math.PI*2;
+      const ca=Math.cos(a), sa=Math.sin(a);
+      for(let i=0;i<path.length;i++){
+        const p=path[i];
+        if(!p) continue;
+        const x = (isFinite(p.X)? p.X : (p.x??0));
+        const y = (isFinite(p.Y)? p.Y : (p.y??0));
+        const dx=x-cx, dy=y-cy;
+        const X=cx + dx*ca - dy*sa;
+        const Y=cy + dx*sa + dy*ca;
+        const travel = (!!p.travel) && !d.merge;
+        out.push({...p, X, Y, travel});
+      }
+    }
+    return { out };
+  }
+}
+,
+
+"Weave Offset":{
+  title:"Weave Offset",
+  tag:"modifier",
+  desc:"Wavy XY offset along the path (great for woven / organic looks).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({ amp:0.6, freq:6, phaseDeg:0, axis:"normal" }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Amplitude (mm)", elNumber(d.amp??0.6, v=>{ d.amp=v; markDirtyAuto(); saveState(); }, 0.05)));
+    mount.appendChild(field("Frequency", elNumber(d.freq??6, v=>{ d.freq=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Phase (deg)", elNumber(d.phaseDeg??0, v=>{ d.phaseDeg=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Axis", elSelect(d.axis||"normal", [["normal","Normal"],["x","X"],["y","Y"]], v=>{ d.axis=v; markDirtyAuto(); saveState(); })));
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || [];
+    if(!Array.isArray(path) || path.length===0) return { out: [] };
+    const d=node.data;
+    const A=Number(d.amp||0);
+    const f=Math.max(0, Number(d.freq||0));
+    const ph=rad(Number(d.phaseDeg||0));
+    if(A===0 || f===0) return { out: path.slice() };
+    const out=[];
+    const N=path.length;
+    for(let i=0;i<N;i++){
+      const p=path[i];
+      if(!p){ continue; }
+      const x=isFinite(p.X)?p.X:(p.x??0);
+      const y=isFinite(p.Y)?p.Y:(p.y??0);
+      // tangent approx
+      const p0=path[Math.max(0,i-1)]||p;
+      const p1=path[Math.min(N-1,i+1)]||p;
+      const x0=isFinite(p0.X)?p0.X:(p0.x??0);
+      const y0=isFinite(p0.Y)?p0.Y:(p0.y??0);
+      const x1=isFinite(p1.X)?p1.X:(p1.x??0);
+      const y1=isFinite(p1.Y)?p1.Y:(p1.y??0);
+      const tx=x1-x0, ty=y1-y0;
+      const l=Math.hypot(tx,ty)||1;
+      const nx=-ty/l, ny=tx/l;
+      const w = A*Math.sin(ph + (i/(N-1||1))*Math.PI*2*f);
+      let X=x, Y=y;
+      if((d.axis||"normal")==="normal"){ X=x+nx*w; Y=y+ny*w; }
+      else if(d.axis==="x"){ X=x+w; }
+      else if(d.axis==="y"){ Y=y+w; }
+      out.push({...p, X, Y});
+    }
+    return { out };
+  }
+},
+
+"Snake Wall":{
+  title:"Snake Wall",
+  tag:"modifier",
+  desc:"Convert a path into a continuous 'snake mode' zig-zag wall (useful for fast fills without infill).",
+  inputs:[{name:"in", type:"path"}],
+  outputs:[{name:"out", type:"path"}],
+  initData:()=>({ spacing:0.6, angleDeg:0 }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    mount.appendChild(field("Spacing (mm)", elNumber(d.spacing??0.6, v=>{ d.spacing=v; markDirtyAuto(); saveState(); }, 0.05)));
+    mount.appendChild(field("Angle (deg)", elNumber(d.angleDeg??0, v=>{ d.angleDeg=v; markDirtyAuto(); saveState(); }, 1)));
+    const tip=document.createElement("div");
+    tip.className="hint";
+    tip.innerHTML="<b>Tip</b><div>Best on simple bounding boxes / silhouettes. Pair with Travel Optimize.</div>";
+    mount.appendChild(tip);
+  },
+  evaluate:(node, ctx)=>{
+    const inp = ctx.getInput(node.id, "in");
+    const path = (inp?.out || inp?.path || inp) || [];
+    if(!Array.isArray(path) || path.length===0) return { out: [] };
+    const d=node.data;
+    const sp=Math.max(0.05, Number(d.spacing||0.6));
+    const ang=rad(Number(d.angleDeg||0));
+    // Compute bounds per layer
+    const byLayer = new Map();
+    for(const p of path){
+      if(!p) continue;
+      const L = p.layer ?? Math.floor(((p.z??p.Z??0) / (ctx.defaultProfile?.layerHeight||0.2)));
+      const x=isFinite(p.X)?p.X:(p.x??0);
+      const y=isFinite(p.Y)?p.Y:(p.y??0);
+      if(!byLayer.has(L)) byLayer.set(L, {minx:x,maxx:x,miny:y,maxy:y, z:(p.z??p.Z??0)});
+      const b=byLayer.get(L);
+      b.minx=Math.min(b.minx,x); b.maxx=Math.max(b.maxx,x);
+      b.miny=Math.min(b.miny,y); b.maxy=Math.max(b.maxy,y);
+      b.z=(p.z??p.Z??b.z);
+    }
+    const out=[];
+    const layers=[...byLayer.keys()].sort((a,b)=>a-b);
+    for(const L of layers){
+      const b=byLayer.get(L);
+      const w=b.maxx-b.minx, h=b.maxy-b.miny;
+      const n = Math.max(2, Math.floor((h)/sp));
+      for(let i=0;i<=n;i++){
+        const t=i/n;
+        const y=b.miny + t*h;
+        const x0=b.minx, x1=b.maxx;
+        const flip=i%2===1;
+        const xa=flip?x1:x0, xb=flip?x0:x1;
+        // rotate around center
+        const cx=(b.minx+b.maxx)/2, cy=(b.miny+b.maxy)/2;
+        const rot=(x,y)=>{
+          const dx=x-cx, dy=y-cy;
+          return {X: cx + dx*Math.cos(ang)-dy*Math.sin(ang), Y: cy + dx*Math.sin(ang)+dy*Math.cos(ang)};
+        };
+        const A=rot(xa,y), B=rot(xb,y);
+        out.push({X:A.X,Y:A.Y,z:b.z,role:"infill",travel:false,layer:L});
+        out.push({X:B.X,Y:B.Y,z:b.z,role:"infill",travel:false,layer:L});
+      }
+    }
+    return { out };
+  }
+}
+,
+"Image (HueForge)":{
+  title:"Image (HueForge)",
+  tag:"generator",
+  desc:"Load an image → generate a heightmap relief (front-lit lithophane style) + optional swap-by-layer filament plan.",
+  inputs:[{name:"profile", type:"profile"}],
+  outputs:[{name:"mesh", type:"mesh"},{name:"rules", type:"rules"}],
+  initData:()=>({
+    imgB64:"",
+    maxRes:180,
+    widthMM:120,
+    thicknessMin:0.6,
+    thicknessMax:3.2,
+    invert:false,
+    gamma:1.6,
+    blur:0,
+    // filament painting plan (single color per layer range)
+    enableFilamentPlan:true,
+    layerHeight:0.2,
+    filamentCmd:"M600",
+    palette:[
+      {name:"Black", hex:"#0b0b0c"},
+      {name:"Gray",  hex:"#6a6f7a"},
+      {name:"White", hex:"#f2f2f2"}
+    ],
+    // stops = boundaries where color changes (layer index)
+    stops:[ {layer:0, idx:0}, {layer:12, idx:1}, {layer:26, idx:2} ],
+    autoStops:true
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+
+    // file input
+    const row=document.createElement("div");
+    row.className="row";
+    row.style.justifyContent="space-between";
+    row.style.gap="8px";
+    const file=document.createElement("input");
+    file.type="file";
+    file.accept="image/*";
+    file.style.flex="1";
+    file.className="text";
+    const btn=document.createElement("button");
+    btn.className="btn smallBtn";
+    btn.textContent="Clear";
+    btn.addEventListener("click", ()=>{
+      d.imgB64=""; node.runtime = node.runtime||{}; node.runtime.mesh=null; node.runtime.imgInfo=null;
+      saveState(); markDirtyAuto(); NODE_DEFS[node.type].render(node, mount);
+    });
+    row.appendChild(file); row.appendChild(btn);
+    mount.appendChild(field("Image", row));
+
+    const preview=document.createElement("div");
+    preview.className="imgNodePreview";
+    const canvas=document.createElement("canvas");
+    canvas.width=420; canvas.height=260;
+    preview.appendChild(canvas);
+    mount.appendChild(preview);
+
+    const info=document.createElement("div");
+    info.className="hint";
+    info.style.marginTop="8px";
+    info.innerHTML = d.imgB64 ? "<span class='chip'><span class='swatch' style='background:var(--accent)'></span><b style='color:var(--text)'>Image loaded</b></span>" : "<span class='muted'>No image loaded.</span>";
+    mount.appendChild(info);
+
+    const drawPreview=()=>{
+      const ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle="rgba(255,255,255,0.04)";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      const img = node.runtime?.imgObj;
+      if(img){
+        const fit = fitRect(img.width, img.height, canvas.width, canvas.height);
+        ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+
+        // overlay quantized palette preview (simple)
+        if(d.enableFilamentPlan && node.runtime?.imgSmall){
+          const {w,h,data} = node.runtime.imgSmall;
+          const ov = document.createElement("canvas");
+          ov.width=w; ov.height=h;
+          const octx=ov.getContext("2d");
+          const im=octx.createImageData(w,h);
+          const stops = getStopsResolved(d, h, node.runtime.imgSmallLayerCount||40);
+          for(let y=0;y<h;y++){
+            for(let x=0;x<w;x++){
+              const i=(y*w+x)*4;
+              const r=data[i], g=data[i+1], b=data[i+2];
+              const L = (0.2126*r + 0.7152*g + 0.0722*b)/255;
+              const li = brightnessToLayerIndex(L, d);
+              const pal = pickPaletteForLayer(li, stops, d.palette);
+              const pr = hexToRgb(pal.hex);
+              im.data[i]=pr.r; im.data[i+1]=pr.g; im.data[i+2]=pr.b; im.data[i+3]=110;
+            }
+          }
+          octx.putImageData(im,0,0);
+          const fit2 = fitRect(w,h, canvas.width, canvas.height);
+          ctx.drawImage(ov, fit2.x, fit2.y, fit2.w, fit2.h);
+        }
+      }else{
+        ctx.fillStyle="rgba(255,255,255,0.15)";
+        ctx.font="12px ui-sans-serif";
+        ctx.fillText("Load an image to generate a HueForge-style relief mesh.", 14, 26);
+      }
+    };
+
+    // settings
+    mount.appendChild(dividerTiny());
+    mount.appendChild(field("Width (mm)", elNumber(d.widthMM??120, v=>{ d.widthMM=v; scheduleRebuild(node); saveState(); }, 1)));
+    mount.appendChild(field("Thickness min (mm)", elNumber(d.thicknessMin??0.6, v=>{ d.thicknessMin=v; scheduleRebuild(node); saveState(); }, 0.01)));
+    mount.appendChild(field("Thickness max (mm)", elNumber(d.thicknessMax??3.2, v=>{ d.thicknessMax=v; scheduleRebuild(node); saveState(); }, 0.01)));
+    mount.appendChild(field("Invert", elToggle(!!d.invert, v=>{ d.invert=!!v; scheduleRebuild(node); saveState(); })));
+    mount.appendChild(field("Gamma", elNumber(d.gamma??1.6, v=>{ d.gamma=v; scheduleRebuild(node); saveState(); }, 0.05)));
+    mount.appendChild(field("Blur (px)", elNumber(d.blur??0, v=>{ d.blur=v; scheduleRebuild(node); saveState(); }, 1)));
+    mount.appendChild(field("Max resolution (px)", elNumber(d.maxRes??180, v=>{ d.maxRes=v; scheduleRebuild(node); saveState(); }, 1)));
+
+    // filament plan UI
+    mount.appendChild(dividerTiny());
+    mount.appendChild(field("Enable filament plan (swap-by-layer)", elToggle(!!d.enableFilamentPlan, v=>{ d.enableFilamentPlan=!!v; scheduleRebuild(node); saveState(); drawPreview(); })));
+    if(d.enableFilamentPlan){
+      mount.appendChild(field("Layer height (mm)", elNumber(d.layerHeight??0.2, v=>{ d.layerHeight=v; scheduleRebuild(node); saveState(); }, 0.01)));
+      mount.appendChild(field("Filament change cmd", elText(d.filamentCmd||"M600", v=>{ d.filamentCmd=v; saveState(); }, "M600 / M0 / PAUSE")));
+
+      const palTitle=document.createElement("div");
+      palTitle.className="row";
+      palTitle.style.justifyContent="space-between";
+      palTitle.innerHTML = "<b style='color:var(--text)'>Palette</b><span class='muted'>Top→bottom order in stops</span>";
+      const addPal=document.createElement("button");
+      addPal.className="btn smallBtn";
+      addPal.textContent="+";
+      addPal.addEventListener("click", ()=>{
+        d.palette.push({name:"Color", hex:"#00ff88"});
+        scheduleRebuild(node); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+      palTitle.appendChild(addPal);
+      mount.appendChild(palTitle);
+
+      for(let i=0;i<d.palette.length;i++){
+        const p=d.palette[i];
+        const line=document.createElement("div");
+        line.className="paletteRow";
+        const name=elText(p.name||"", v=>{ p.name=v; saveState(); }, "Name");
+        const hex=document.createElement("input");
+        hex.type="color";
+        hex.value = normalizeHex(p.hex||"#00ff88");
+        hex.style.width="100%";
+        hex.addEventListener("input", ()=>{ p.hex=hex.value; scheduleRebuild(node); saveState(); drawPreview(); });
+        const del=document.createElement("button");
+        del.className="btn smallBtn";
+        del.textContent="✕";
+        del.addEventListener("click", ()=>{
+          d.palette.splice(i,1);
+          scheduleRebuild(node); saveState(); NODE_DEFS[node.type].render(node, mount);
+        });
+        line.appendChild(name); line.appendChild(hex); line.appendChild(del);
+        mount.appendChild(line);
+      }
+
+      mount.appendChild(dividerTiny());
+      const stopRow=document.createElement("div");
+      stopRow.className="row";
+      stopRow.style.justifyContent="space-between";
+      stopRow.innerHTML = "<b style='color:var(--text)'>Stops</b><span class='muted'>layer → palette index</span>";
+      const autoBtn=document.createElement("button");
+      autoBtn.className="btn smallBtn";
+      autoBtn.textContent="Auto";
+      autoBtn.addEventListener("click", ()=>{
+        d.autoStops=true;
+        autoStops(d);
+        scheduleRebuild(node); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+      stopRow.appendChild(autoBtn);
+      mount.appendChild(stopRow);
+
+      if(!Array.isArray(d.stops)) d.stops=[];
+      d.stops.forEach((s,si)=>{
+        const r=document.createElement("div");
+        r.className="paletteRow";
+        const l=elNumber(s.layer??0, v=>{ s.layer=Math.max(0, Math.floor(v)); scheduleRebuild(node); saveState(); drawPreview(); }, 1);
+        const opts = d.palette.map((p,pi)=>[String(pi), `${pi}: ${p.name||"Color"}`]);
+        const sel=elSelect(String(s.idx??0), opts, v=>{ s.idx=Math.max(0, Math.floor(Number(v))); scheduleRebuild(node); saveState(); drawPreview(); });
+        const del=document.createElement("button");
+        del.className="btn smallBtn";
+        del.textContent="✕";
+        del.addEventListener("click", ()=>{
+          d.stops.splice(si,1);
+          scheduleRebuild(node); saveState(); NODE_DEFS[node.type].render(node, mount);
+        });
+        r.appendChild(l); r.appendChild(sel); r.appendChild(del);
+        mount.appendChild(r);
+      });
+
+      const addStop=document.createElement("button");
+      addStop.className="btn smallBtn";
+      addStop.style.marginTop="8px";
+      addStop.textContent="+ Add stop";
+      addStop.addEventListener("click", ()=>{
+        d.stops.push({layer:0, idx:0});
+        scheduleRebuild(node); saveState(); NODE_DEFS[node.type].render(node, mount);
+      });
+      mount.appendChild(addStop);
+    }
+
+    const tip=document.createElement("div");
+    tip.className="hint";
+    tip.style.marginTop="10px";
+    tip.innerHTML =
+      "<b style='color:var(--text)'>How it works</b>"+
+      "<div>This node builds a relief mesh from your image (thickness varies by brightness). Then it can output a swap-by-layer plan (single color per layer range).</div>"+
+      "<div class='muted'>This is an approximation of HueForge-style filament painting; you can refine stops + palette by test prints.</div>";
+    mount.appendChild(tip);
+
+    // helpers used above
+    function fitRect(w,h,W,H){
+      const s=Math.min(W/w, H/h);
+      const ww=w*s, hh=h*s;
+      return {x:(W-ww)*0.5, y:(H-hh)*0.5, w:ww, h:hh};
+    }
+    function normalizeHex(h){
+      const t=String(h||"").trim();
+      if(/^#([0-9a-f]{6})$/i.test(t)) return t;
+      return "#00ff88";
+    }
+    function hexToRgb(hex){
+      const h=normalizeHex(hex).slice(1);
+      const n=parseInt(h,16);
+      return {r:(n>>16)&255, g:(n>>8)&255, b:n&255};
+    }
+    function brightnessToLayerIndex(L, d){
+      // Map luminance to a conceptual layer index: brighter -> lower thickness -> "top layers"
+      const inv = d.invert ? (1-L) : L;
+      const g = Math.max(0.1, Number(d.gamma||1));
+      const v = Math.pow(clamp(inv,0,1), g);
+      // 0..1 -> 0..N
+      const N = Math.max(1, Math.ceil((Number(d.thicknessMax||3.2)-Number(d.thicknessMin||0.6))/Math.max(0.01, Number(d.layerHeight||0.2)))+2);
+      node.runtime = node.runtime||{};
+      node.runtime.imgSmallLayerCount = N;
+      return Math.floor(v * (N-1));
+    }
+    function getStopsResolved(d, h, Nlayers){
+      if(d.autoStops) autoStops(d, Nlayers);
+      const stops = (d.stops||[]).slice().map(s=>({layer:Math.max(0,Math.floor(s.layer||0)), idx:Math.max(0,Math.floor(s.idx||0))}))
+        .sort((a,b)=>a.layer-b.layer);
+      if(!stops.length) stops.push({layer:0, idx:0});
+      // clamp indices
+      stops.forEach(s=>{ s.idx = clamp(s.idx, 0, (d.palette?.length||1)-1); });
+      return stops;
+    }
+    function pickPaletteForLayer(layerIdx, stops, palette){
+      let cur = stops[0];
+      for(const s of stops){ if(layerIdx>=s.layer) cur=s; else break; }
+      return palette[clamp(cur.idx,0,(palette.length||1)-1)] || {name:"",hex:"#00ff88"};
+    }
+    function autoStops(d, NlayersOverride=null){
+      const palN = Math.max(1, d.palette?.length||1);
+      const lh = Math.max(0.01, Number(d.layerHeight||0.2));
+      const thMin = Number(d.thicknessMin||0.6);
+      const thMax = Number(d.thicknessMax||3.2);
+      const Nlayers = NlayersOverride || Math.max(1, Math.ceil((thMax-thMin)/lh)+2);
+      const seg = Math.max(1, Math.floor(Nlayers / palN));
+      d.stops = [];
+      for(let i=0;i<palN;i++){
+        d.stops.push({layer:i*seg, idx:i});
+      }
+      d.autoStops = true;
+    }
+    function scheduleRebuild(node){
+      node.runtime = node.runtime || {};
+      node.runtime.needsRebuild = true;
+      markDirtyAuto();
+      drawPreview();
+    }
+
+    // image load
+    file.addEventListener("change", ()=>{
+      const f=file.files && file.files[0];
+      if(!f) return;
+      const reader=new FileReader();
+      reader.onload=()=>{
+        d.imgB64 = String(reader.result||"");
+        node.runtime = node.runtime || {};
+        node.runtime.needsRebuild = true;
+        node.runtime.mesh = null;
+        node.runtime.imgObj = null;
+        node.runtime.imgSmall = null;
+        saveState();
+        buildFromImage(node, canvas, drawPreview);
+      };
+      reader.readAsDataURL(f);
+    });
+
+    // initial
+    if(d.imgB64 && (!node.runtime || node.runtime.needsRebuild)){
+      buildFromImage(node, canvas, drawPreview);
+    }else{
+      drawPreview();
+    }
+  },
+  evaluate:(node, ctx)=>{
+    // Return cached mesh if ready
+    const mesh = node.runtime?.mesh || null;
+    const d=node.data;
+    let rules=null;
+    if(d.enableFilamentPlan){
+      const stops = (d.stops||[]).slice().sort((a,b)=>a.layer-b.layer);
+      const changes = [];
+      for(let i=0;i<stops.length;i++){
+        const s=stops[i];
+        const pal = d.palette?.[clamp(s.idx||0, 0, (d.palette?.length||1)-1)] || null;
+        if(pal) changes.push({layer:Math.max(0,Math.floor(s.layer||0)), name:pal.name||"", hex:pal.hex||""});
+      }
+      rules = { filamentChanges: changes, filamentCmd: d.filamentCmd || "M600" };
+    }
+    return { mesh, rules };
+  }
+}
+,
+"Vase (Control Points)":{
+  title:"Vase (Control Points)",
+  tag:"generator",
+  desc:"Design a vase by editing radius-vs-height control points. Outputs a revolved mesh (and optional spiral wall path).",
+  inputs:[{name:"profile", type:"profile"}],
+  outputs:[{name:"mesh", type:"mesh"},{name:"path", type:"path"}],
+  initData:()=>({
+    height:140,
+    baseRadius:35,
+    wall:1.2,
+    segments:160,
+    // profile control points (u in 0..1, r multiplier)
+    points:[ {u:0.0, r:1.0}, {u:0.15, r:1.05}, {u:0.45, r:0.9}, {u:0.75, r:1.12}, {u:1.0, r:0.85} ],
+    smooth:0.35,
+    bedAlign:true,
+    // spiral wall
+    outputSpiralPath:true,
+    layerHeight:0.24,
+    turnsPerLayer:1.0,
+    twistDeg:0,
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+    // preview pad 2:3
+    const pad=document.createElement("div");
+    pad.className="imgNodePreview";
+    pad.style.aspectRatio="2 / 3";
+    const c=document.createElement("canvas");
+    c.width=420; c.height=630;
+    pad.appendChild(c);
+    mount.appendChild(pad);
+
+    function draw(){
+      const ctx=c.getContext("2d");
+      const W=c.width, H=c.height;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,0.04)";
+      ctx.fillRect(0,0,W,H);
+
+      // plot area with padding
+      const px=18, py=18;
+      const gx=px, gy=py, gw=W-2*px, gh=H-2*py;
+      ctx.strokeStyle="rgba(255,255,255,0.18)";
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.rect(gx,gy,gw,gh);
+      ctx.stroke();
+
+      // axes labels
+      ctx.fillStyle="rgba(255,255,255,0.55)";
+      ctx.font="12px ui-sans-serif";
+      ctx.fillText("Radius →", gx+8, gy+16);
+      ctx.save();
+      ctx.translate(gx+6, gy+gh-10);
+      ctx.rotate(-Math.PI/2);
+      ctx.fillText("Height ↑", 0,0);
+      ctx.restore();
+
+      // curve
+      const pts = (d.points||[]).slice().sort((a,b)=>a.u-b.u);
+      const toXY=(p)=>{
+        const x = gx + (p.r*0.9)*gw; // r roughly 0..1.4
+        const y = gy + (1-p.u)*gh;
+        return {x,y};
+      };
+
+      // sample smooth curve
+      ctx.strokeStyle="rgba(0,255,160,0.85)";
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      const N=140;
+      for(let i=0;i<=N;i++){
+        const u=i/N;
+        const r = evalProfile(u, pts, d.smooth||0);
+        const x = gx + (r*0.9)*gw;
+        const y = gy + (1-u)*gh;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // control points
+      for(let i=0;i<pts.length;i++){
+        const p=pts[i];
+        const q=toXY(p);
+        ctx.fillStyle="rgba(0,255,160,0.9)";
+        ctx.beginPath(); ctx.arc(q.x,q.y,6,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle="rgba(0,0,0,0.35)";
+        ctx.stroke();
+      }
+
+      ctx.fillStyle="rgba(255,255,255,0.55)";
+      ctx.font="11px ui-sans-serif";
+      ctx.fillText("Drag points. Double-click to add. Right-click a point to delete.", gx+8, gy+gh-10);
+    }
+
+    function evalProfile(u, pts, smooth){
+      // piecewise linear, then a tiny smoothing (Catmull-ish by blending)
+      if(!pts.length) return 1.0;
+      if(u<=pts[0].u) return pts[0].r;
+      if(u>=pts[pts.length-1].u) return pts[pts.length-1].r;
+      let i=1;
+      for(; i<pts.length; i++){
+        if(u<=pts[i].u) break;
+      }
+      const p0=pts[i-1], p1=pts[i];
+      const t=(u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
+      let r = p0.r + (p1.r-p0.r)*t;
+
+      const s = clamp(Number(smooth||0), 0, 1);
+      if(s>0){
+        const pPrev = pts[Math.max(0,i-2)];
+        const pNext = pts[Math.min(pts.length-1,i+1)];
+        const rAlt = cubicHermite(u, pPrev, p0, p1, pNext);
+        r = r*(1-s) + rAlt*s;
+      }
+      return clamp(r, 0.05, 2.0);
+    }
+    function cubicHermite(u, pPrev, p0, p1, pNext){
+      // Map u to segment space
+      const t = (u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
+      const m0 = (p1.r - pPrev.r) / Math.max(1e-9, (p1.u - pPrev.u));
+      const m1 = (pNext.r - p0.r) / Math.max(1e-9, (pNext.u - p0.u));
+      const h00 = (2*t*t*t - 3*t*t + 1);
+      const h10 = (t*t*t - 2*t*t + t);
+      const h01 = (-2*t*t*t + 3*t*t);
+      const h11 = (t*t*t - t*t);
+      const du = (p1.u - p0.u);
+      return h00*p0.r + h10*m0*du + h01*p1.r + h11*m1*du;
+    }
+
+    function getPtsSorted(){ return (d.points||[]).slice().sort((a,b)=>a.u-b.u); }
+
+    // interaction: drag
+    let dragIndex=-1;
+    const hitRadius=10;
+    function pickPoint(mx,my){
+      const pts=getPtsSorted();
+      const px=18, py=18;
+      const gx=px, gy=py, gw=c.width-2*px, gh=c.height-2*py;
+      const toXY=(p)=>({x: gx + (p.r*0.9)*gw, y: gy + (1-p.u)*gh});
+      let best=-1, bd=1e9;
+      for(let i=0;i<pts.length;i++){
+        const q=toXY(pts[i]);
+        const dx=mx-q.x, dy=my-q.y;
+        const dd=dx*dx+dy*dy;
+        if(dd<bd && dd<hitRadius*hitRadius){ bd=dd; best=i; }
+      }
+      if(best<0) return -1;
+      // map to original array index (by unique u+r)
+      const orig = d.points.findIndex(p=>p.u===pts[best].u && p.r===pts[best].r);
+      return orig>=0 ? orig : best;
+    }
+    function canvasToUR(mx,my){
+      const px=18, py=18;
+      const gx=px, gy=py, gw=c.width-2*px, gh=c.height-2*py;
+      const rr = clamp((mx-gx)/gw, 0, 1) / 0.9;
+      const uu = clamp(1-((my-gy)/gh), 0, 1);
+      return {u:uu, r:rr};
+    }
+
+    c.addEventListener("mousedown", (e)=>{
+      const rect=c.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)*(c.width/rect.width);
+      const my=(e.clientY-rect.top)*(c.height/rect.height);
+      const idx=pickPoint(mx,my);
+      if(idx>=0){
+        dragIndex=idx;
+        e.preventDefault();
+      }
+    });
+    window.addEventListener("mousemove", (e)=>{
+      if(dragIndex<0) return;
+      const rect=c.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)*(c.width/rect.width);
+      const my=(e.clientY-rect.top)*(c.height/rect.height);
+      const ur=canvasToUR(mx,my);
+      d.points[dragIndex].u = ur.u;
+      d.points[dragIndex].r = ur.r;
+      saveState(); markDirtyAuto(); draw();
+    });
+    window.addEventListener("mouseup", ()=>{ dragIndex=-1; });
+
+    c.addEventListener("dblclick", (e)=>{
+      const rect=c.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)*(c.width/rect.width);
+      const my=(e.clientY-rect.top)*(c.height/rect.height);
+      const ur=canvasToUR(mx,my);
+      d.points.push({u:ur.u, r:ur.r});
+      saveState(); markDirtyAuto(); draw();
+    });
+    c.addEventListener("contextmenu", (e)=>{
+      e.preventDefault();
+      const rect=c.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)*(c.width/rect.width);
+      const my=(e.clientY-rect.top)*(c.height/rect.height);
+      const idx=pickPoint(mx,my);
+      if(idx>=0 && (d.points||[]).length>2){
+        d.points.splice(idx,1);
+        saveState(); markDirtyAuto(); draw();
+      }
+    });
+
+    mount.appendChild(dividerTiny());
+    mount.appendChild(field("Height (mm)", elNumber(d.height??140, v=>{ d.height=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Base radius (mm)", elNumber(d.baseRadius??35, v=>{ d.baseRadius=v; markDirtyAuto(); saveState(); }, 0.1)));
+    mount.appendChild(field("Wall (mm)", elNumber(d.wall??1.2, v=>{ d.wall=v; markDirtyAuto(); saveState(); }, 0.05)));
+    mount.appendChild(field("Revolve segments", elNumber(d.segments??160, v=>{ d.segments=v; markDirtyAuto(); saveState(); }, 1)));
+    mount.appendChild(field("Smooth", elNumber(d.smooth??0.35, v=>{ d.smooth=v; markDirtyAuto(); saveState(); draw(); }, 0.01)));
+    mount.appendChild(field("Bed align", elToggle(!!d.bedAlign, v=>{ d.bedAlign=!!v; markDirtyAuto(); saveState(); })));
+
+    mount.appendChild(dividerTiny());
+    mount.appendChild(field("Output spiral wall path", elToggle(!!d.outputSpiralPath, v=>{ d.outputSpiralPath=!!v; markDirtyAuto(); saveState(); })));
+    if(d.outputSpiralPath){
+      mount.appendChild(field("Layer height", elNumber(d.layerHeight??0.24, v=>{ d.layerHeight=v; markDirtyAuto(); saveState(); }, 0.01)));
+      mount.appendChild(field("Turns per layer", elNumber(d.turnsPerLayer??1.0, v=>{ d.turnsPerLayer=v; markDirtyAuto(); saveState(); }, 0.05)));
+      mount.appendChild(field("Twist (deg)", elNumber(d.twistDeg??0, v=>{ d.twistDeg=v; markDirtyAuto(); saveState(); }, 1)));
+    }
+
+    // expose eval for draw
+    node.runtime = node.runtime || {};
+    node.runtime._evalProfile = (u)=>evalProfile(u, getPtsSorted(), d.smooth||0);
+    draw();
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const H = Math.max(1, Number(d.height||140));
+    const R0 = Math.max(1, Number(d.baseRadius||35));
+    const wall = Math.max(0.4, Number(d.wall||1.2));
+    const seg = Math.max(24, Math.floor(Number(d.segments||160)));
+    const pts = (d.points||[]).slice().sort((a,b)=>a.u-b.u);
+    const prof = (node.runtime && node.runtime._evalProfile) ? node.runtime._evalProfile : ((u)=>1.0);
+
+    // Build revolved surface (outer + inner)
+    const tris=[];
+    const addTri=(ax,ay,az,bx,by,bz,cx,cy,cz)=>{ tris.push(ax,ay,az,bx,by,bz,cx,cy,cz); };
+
+    const rings = Math.max(2, Math.floor(H / 1.0)+2);
+    for(let j=0;j<rings-1;j++){
+      const u0=j/(rings-1), u1=(j+1)/(rings-1);
+      const z0=u0*H, z1=u1*H;
+      const rO0 = R0 * prof(u0);
+      const rO1 = R0 * prof(u1);
+      const rI0 = Math.max(0.1, rO0 - wall);
+      const rI1 = Math.max(0.1, rO1 - wall);
+
+      for(let i=0;i<seg;i++){
+        const t0=i/seg, t1=(i+1)/seg;
+        const a0=t0*Math.PI*2, a1=t1*Math.PI*2;
+        const c0=Math.cos(a0), s0=Math.sin(a0);
+        const c1=Math.cos(a1), s1=Math.sin(a1);
+
+        // outer quad (two tris)
+        const x00=rO0*c0, y00=rO0*s0;
+        const x10=rO0*c1, y10=rO0*s1;
+        const x01=rO1*c0, y01=rO1*s0;
+        const x11=rO1*c1, y11=rO1*s1;
+        addTri(x00,y00,z0, x10,y10,z0, x01,y01,z1);
+        addTri(x10,y10,z0, x11,y11,z1, x01,y01,z1);
+
+        // inner quad (flip winding)
+        const xi00=rI0*c0, yi00=rI0*s0;
+        const xi10=rI0*c1, yi10=rI0*s1;
+        const xi01=rI1*c0, yi01=rI1*s0;
+        const xi11=rI1*c1, yi11=rI1*s1;
+        addTri(xi00,yi00,z0, xi01,yi01,z1, xi10,yi10,z0);
+        addTri(xi10,yi10,z0, xi01,yi01,z1, xi11,yi11,z1);
+      }
+    }
+
+    // bottom cap
+    {
+      const z=0;
+      const rO=R0*prof(0);
+      const rI=Math.max(0.1, rO-wall);
+      for(let i=0;i<seg;i++){
+        const a0=(i/seg)*Math.PI*2, a1=((i+1)/seg)*Math.PI*2;
+        const c0=Math.cos(a0), s0=Math.sin(a0);
+        const c1=Math.cos(a1), s1=Math.sin(a1);
+        // ring cap between rI and rO
+        addTri(rI*c0,rI*s0,z, rO*c1,rO*s1,z, rO*c0,rO*s0,z);
+        addTri(rI*c0,rI*s0,z, rI*c1,rI*s1,z, rO*c1,rO*s1,z);
+      }
+    }
+
+    // Convert to mesh struct
+    const arr = new Float32Array(tris);
+    let mesh = { tris: arr, triCount: Math.floor(arr.length/9), bounds: computeMeshBounds(arr), index:null };
+    if(d.bedAlign) mesh = bedAlignMesh(mesh);
+
+    // Optional spiral path (single wall)
+    let path = [];
+    if(d.outputSpiralPath){
+      const lh = Math.max(0.01, Number(d.layerHeight||0.24));
+      const layers = Math.max(1, Math.ceil(H/lh));
+      const turnsPerLayer = Math.max(0.1, Number(d.turnsPerLayer||1.0));
+      const twist = (Number(d.twistDeg||0)*Math.PI/180);
+      const segPerTurn=180;
+      const totalSeg = layers*turnsPerLayer*segPerTurn;
+      for(let k=0;k<=totalSeg;k++){
+        const u=k/Math.max(1,totalSeg);
+        const z=u*H;
+        const layer=Math.floor(z/lh);
+        const theta = u*(layers*turnsPerLayer)*Math.PI*2 + twist*u;
+        const rr = R0*prof(u);
+        const X = rr*Math.cos(theta);
+        const Y = rr*Math.sin(theta);
+        path.push({X,Y,z,role:"wall",travel:false,layer});
+      }
+    }
+
+    return { mesh, path, outMesh:mesh, outPath:path };
+  }
+}
+};
+
+/* ---------------------------
+   Graph evaluation engine
+---------------------------- */
+let evalCache = new Map();
+let evalDirty = true;
+function buildLinkIndex(){
+  const inputMap = new Map();
+  for(const link of state.links){
+    inputMap.set(link.to.node + ":" + link.to.port, link);
+  }
+  return {inputMap};
+}
+function evalNode(nodeId, ctx, stack=[]){
+  if(evalCache.has(nodeId)) return evalCache.get(nodeId);
+  const node = state.nodes[nodeId];
+  if(!node) return null;
+  if(stack.includes(nodeId)) throw new Error("Cycle detected: " + [...stack, nodeId].join(" → "));
+  const def = NODE_DEFS[node.type];
+  if(!def) throw new Error("Unknown node type: " + node.type);
+  const out = def.evaluate(node, ctx);
+  evalCache.set(nodeId, out);
+  return out;
+}
+function evaluateGraph(){
+  const t0 = performance.now();
+  setStatus("Running…");
+  evalCache = new Map();
+  const {inputMap} = buildLinkIndex();
+  const pmap = buildParamMap();
+  const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+  const profile = printerNode ? printerNode.data : defaultPrinterFallback();
+  const base = baseFromProfile(profile);
+  const ctx = {
+    pmap, base,
+    defaultProfile: profile,
+    getInput: (nodeId, inputPort)=>{
+      const link = inputMap.get(nodeId+":"+inputPort);
+      if(!link) return null;
+      const srcId = link.from.node;
+      const srcPort = link.from.port;
+      const res = evalNode(srcId, ctx);
+      return res ? res[srcPort] : null;
+    }
+  };
+  
+  const exports = Object.values(state.nodes).filter(n=>n.type==="Export");
+
+  if(!exports.length){
+    // Preview-only mode: no Export node, but still evaluate upstream mesh/path for the preview
+    let mesh = null;
+    let path = [];
+    for(const n of Object.values(state.nodes)){
+      const def = NODE_DEFS[n.type];
+      if(!def?.outputs?.length) continue;
+      const wants = def.outputs.some(o=>o.type==="mesh" || o.type==="path");
+      if(!wants) continue;
+      const out = evalNode(n.id, ctx);
+      if(out?.mesh) mesh = out.mesh;
+      if(Array.isArray(out?.path)) path = out.path;
+    }
+    state.outputs.mesh = mesh;
+    state.outputs.path = Array.isArray(path) ? path : [];
+    state.outputs.gcode = "";
+    state.outputs.stats = {points:(state.outputs.path?.length||0), length:0, e:0, timeMin:0};
+    evalDirty = false;
+    const dt = Math.round(performance.now() - t0);
+    setStatus(`OK • ${dt}ms`);
+    updateOutputUI();
+    schedulePreviewUpdate();
+    return "";
+  }
+
+  let lastOut = null;
+  for(const ex of exports){
+    lastOut = evalNode(ex.id, ctx) || lastOut;
+  }
+  const lastGcode = (lastOut?.gcode) || "";
+
+  evalDirty = false;
+  const dt = Math.round(performance.now() - t0);
+  setStatus(`OK • ${dt}ms`);
+  updateOutputUI();
+  schedulePreviewUpdate();
+  return lastGcode;
+}
+
+/* ---------------------------
+   UI: Left panels
+---------------------------- */
+const nodeListEl = document.getElementById("nodeList");
+const nodeSearchEl = document.getElementById("nodeSearch");
+const btnAddQuick = document.getElementById("btnAddQuick");
+
+// Node Picker (Space): searchable modal list
+const npOverlay = document.getElementById("npOverlay");
+
+// App Settings (persisted)
+const appEl = document.querySelector(".app");
+const SETTINGS_KEY = "gcodeStudio_appSettings_v1";
+let appSettings = {
+  showLib: false,
+  spacePicker: true,
+  spacePickerWhileTyping: false,
+  pickerDelayMs: 140,
+  spawnAtCursor: true
+};
+
+function loadAppSettings(){
+  try{
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if(raw){
+      const obj = JSON.parse(raw);
+      if(obj && typeof obj==="object"){
+        appSettings = {...appSettings, ...obj};
+      }
+    }
+  }catch(_){}
+  applyAppSettings();
+}
+
+function saveAppSettings(){
+  try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); }catch(_){}
+}
+
+function applyAppSettings(){
+  if(appEl){
+    appEl.classList.toggle("showLib", !!appSettings.showLib);
+  }
+}
+
+// Settings modal wiring
+const settingsOverlay = document.getElementById("settingsOverlay");
+const btnSettings = document.getElementById("btnSettings");
+const setShowLib = document.getElementById("setShowLib");
+const setSpacePicker = document.getElementById("setSpacePicker");
+const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
+const setPickerDelay = document.getElementById("setPickerDelay");
+const setSpawnCursor = document.getElementById("setSpawnCursor");
+
+function syncSettingsUI(){
+  if(!settingsOverlay) return;
+  setShowLib.checked = !!appSettings.showLib;
+  setSpacePicker.checked = !!appSettings.spacePicker;
+  setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
+  setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
+  setSpawnCursor.checked = !!appSettings.spawnAtCursor;
+}
+
+function openSettings(){
+  if(!settingsOverlay) return;
+  syncSettingsUI();
+  settingsOverlay?.classList?.add("open");
+  settingsOverlay.setAttribute("aria-hidden","false");
+}
+
+function closeSettings(){
+  if(!settingsOverlay) return;
+  settingsOverlay?.classList?.remove("open");
+  settingsOverlay.setAttribute("aria-hidden","true");
+}
+
+btnSettings?.addEventListener("click", (e)=>{ e.stopPropagation(); openSettings(); });
+
+settingsOverlay?.addEventListener("mousedown", (e)=>{
+  if(e.target === settingsOverlay) closeSettings();
+});
+
+function bindSetting(el, key, transform=(v)=>v){
+  el?.addEventListener("change", ()=>{
+    appSettings[key] = transform(el.type==="checkbox" ? el.checked : el.value);
+    if(key==="pickerDelayMs") appSettings[key] = Math.max(0, Math.min(400, Number(appSettings[key])||0));
+    applyAppSettings();
+    saveAppSettings();
+  });
+}
+
+bindSetting(setShowLib, "showLib", v=>!!v);
+bindSetting(setSpacePicker, "spacePicker", v=>!!v);
+bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
+bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
+bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
+
+function canUseSpacePicker(){
+  if(!appSettings.spacePicker) return false;
+  if(isTyping() && !appSettings.spacePickerWhileTyping) return false;
+  return true;
+}
+
+const npSearch  = document.getElementById("npSearch");
+const npList    = document.getElementById("npList");
+
+const nodePicker = {
+  open:false,
+  query:"",
+  items:[],      // flattened list of {type, def, cat}
+  filtered:[],   // indices into items
+  sel:0,
+  spawn:{x:140, y:120} // world coords
+};
+
+function nodeCat(def){
+  const tag = (def.tag||"").toLowerCase();
+  if(tag==="mesh") return "Mesh";
+  if(tag==="path") return "Path & Slice";
+  if(tag==="modifier") return "Modifiers";
+  if(tag==="rules") return "Rules";
+  if(tag==="printer") return "Printer";
+  if(tag==="ui") return "UI";
+  return "Other";
+}
+
+function rebuildNodePickerItems(){
+  nodePicker.items = Object.entries(NODE_DEFS)
+    .filter(([type, def]) => !def?.hidden)
+    .map(([type, def]) => ({type, def, cat: nodeCat(def)}))
+    .sort((a,b)=>{
+      if(a.cat!==b.cat) return a.cat.localeCompare(b.cat);
+      return (a.def.title||a.type).localeCompare(b.def.title||b.type);
+    });
+}
+
+function getSpawnWorldFromPointer(){
+  try{
+    const rect = graphWrap.getBoundingClientRect();
+    const lx = (state.ui.lastPtrX ?? rect.width*0.5);
+    const ly = (state.ui.lastPtrY ?? rect.height*0.5);
+    return appSettings.spawnAtCursor ? screenToWorld(lx, ly) : screenToWorld(rect.width*0.5, rect.height*0.5);
+  }catch(_){
+    return {x:140, y:120};
+  }
+}
+
+function renderNodePicker(){
+  const q = (npSearch.value||"").trim().toLowerCase();
+  nodePicker.query = q;
+  npList.innerHTML = "";
+
+  const items = nodePicker.items;
+  const filtered = [];
+  for(let i=0;i<items.length;i++){
+    const it = items[i];
+    const hay = ((it.def.title||"")+" "+(it.def.desc||"")+" "+(it.def.tag||"")+" "+it.type).toLowerCase();
+    if(!q || hay.includes(q)) filtered.push(i);
+  }
+  nodePicker.filtered = filtered;
+  nodePicker.sel = Math.max(0, Math.min(nodePicker.sel, filtered.length-1));
+
+  // grouped render
+  let lastCat = "";
+  filtered.forEach((idx, k)=>{
+    const it = items[idx];
+    if(it.cat !== lastCat){
+      lastCat = it.cat;
+      const sec = document.createElement("div");
+      sec.className = "npSection";
+      sec.textContent = lastCat;
+      npList.appendChild(sec);
+    }
+
+    const row = document.createElement("div");
+    row.className = "npItem" + (k===nodePicker.sel ? " sel" : "");
+    row.dataset.k = String(k);
+
+    const meta = document.createElement("div");
+    meta.className = "npMeta";
+    const t = document.createElement("div");
+    t.className = "npTitle";
+    t.textContent = it.def.title || it.type;
+    const d = document.createElement("div");
+    d.className = "npDesc";
+    d.textContent = it.def.desc || it.type;
+    meta.appendChild(t);
+    meta.appendChild(d);
+
+    const badges = document.createElement("div");
+    badges.className = "npBadges";
+    const tag = (it.def.tag||"").toUpperCase();
+    if(tag){
+      const b = document.createElement("div");
+      b.className = "npBadge";
+      b.textContent = tag;
+      badges.appendChild(b);
+    }
+    if(it.def.inputs?.length){
+      const b = document.createElement("div");
+      b.className = "npBadge";
+      b.textContent = "IN " + it.def.inputs.length;
+      badges.appendChild(b);
+    }
+    if(it.def.outputs?.length){
+      const b = document.createElement("div");
+      b.className = "npBadge";
+      b.textContent = "OUT " + it.def.outputs.length;
+      badges.appendChild(b);
+    }
+
+    row.appendChild(meta);
+    row.appendChild(badges);
+
+    row.addEventListener("mousedown", (e)=>e.stopPropagation());
+    row.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      nodePicker.sel = Number(row.dataset.k)||0;
+      addSelectedNodeFromPicker();
+    });
+
+    npList.appendChild(row);
+  });
+
+  // scroll selected into view
+  const selEl = npList.querySelector(".npItem.sel");
+  if(selEl){
+    const box = npList.getBoundingClientRect();
+    const r = selEl.getBoundingClientRect();
+    if(r.top < box.top+8) npList.scrollTop -= (box.top - r.top) + 18;
+    if(r.bottom > box.bottom-8) npList.scrollTop += (r.bottom - box.bottom) + 18;
+  }
+}
+
+function openNodePicker(prefill=""){
+  if(nodePicker.open) return;
+  rebuildNodePickerItems();
+  nodePicker.spawn = getSpawnWorldFromPointer();
+  nodePicker.sel = 0;
+  nodePicker.open = true;
+
+  npOverlay?.classList?.add("open");
+  npOverlay.setAttribute("aria-hidden","false");
+  npSearch.value = prefill || "";
+  npSearch.focus();
+  npSearch.select();
+  renderNodePicker();
+}
+
+function closeNodePicker(){
+  if(!nodePicker.open) return;
+  nodePicker.open = false;
+  npOverlay?.classList?.remove("open");
+  npOverlay.setAttribute("aria-hidden","true");
+  try{ graphWrap.focus(); }catch(_){}
+}
+
+function addSelectedNodeFromPicker(){
+  const filtered = nodePicker.filtered;
+  if(!filtered || !filtered.length){ toast("No nodes match your search."); return; }
+  const idx = filtered[nodePicker.sel] ?? filtered[0];
+  const it = nodePicker.items[idx];
+  if(!it){ toast("Could not resolve selected node."); return; }
+
+  const spawn = nodePicker.spawn || {x:140,y:120};
+  const x = (isFinite(spawn.x) ? spawn.x : 140);
+  const y = (isFinite(spawn.y) ? spawn.y : 120);
+
+  try{
+    const id = addNode(it.type, x, y);
+    if(!id) throw new Error("addNode returned no id");
+    selectNode(id);
+    saveState();
+    markDirtyAuto();
+    closeNodePicker();
+  }catch(err){
+    console.error(err);
+    toast("Failed to add node: " + (err?.message || err));
+  }
+}
+
+npSearch?.addEventListener("input", ()=>{
+  nodePicker.sel = 0;
+  renderNodePicker();
+});
+npSearch?.addEventListener("keydown", (e)=>{
+  if(e.key==="Escape"){ e.preventDefault(); closeNodePicker(); }
+  if(e.key==="Enter"){ e.preventDefault(); addSelectedNodeFromPicker(); }
+  if(e.key==="ArrowDown"){ e.preventDefault(); nodePicker.sel = Math.min(nodePicker.sel+1, nodePicker.filtered.length-1); renderNodePicker(); }
+  if(e.key==="ArrowUp"){ e.preventDefault(); nodePicker.sel = Math.max(nodePicker.sel-1, 0); renderNodePicker(); }
+});
+
+npOverlay?.addEventListener("mousedown", (e)=>{
+  // click outside closes
+  if(e.target === npOverlay) closeNodePicker();
+});
+
+
+function renderNodeLibrary(){
+  const q = (nodeSearchEl.value||"").trim().toLowerCase();
+  nodeListEl.innerHTML = "";
+
+  // Category mapping (Comfy-style grouping)
+  const catOf = (def)=>{
+    const tag = (def.tag||"").toLowerCase();
+    if(tag==="mesh") return "Mesh";
+    if(tag==="path") return "Path & Slice";
+    if(tag==="modifier") return "Modifiers";
+    if(tag==="rules") return "Rules";
+    if(tag==="printer") return "Printer";
+    if(tag==="export") return "Export";
+    return "Other";
+  };
+
+  const entries = Object.entries(NODE_DEFS)
+    .filter(([type, def])=> !def?.hidden)
+    .map(([type, def])=>({type, def, cat:catOf(def)}))
+    .sort((a,b)=> (a.cat===b.cat ? a.def.title.localeCompare(b.def.title) : a.cat.localeCompare(b.cat)));
+
+  // Persist collapsed state in memory (per-session)
+  if(!state.ui) state.ui = {};
+  if(!state.ui.libCollapsed) state.ui.libCollapsed = {};
+
+  const groups = new Map();
+  for(const e of entries){
+    const hay = (e.def.title+" "+e.def.desc+" "+e.def.tag+" "+e.type).toLowerCase();
+    if(q && !hay.includes(q)) continue;
+    if(!groups.has(e.cat)) groups.set(e.cat, []);
+    groups.get(e.cat).push(e);
+  }
+
+  const frag = document.createDocumentFragment();
+  for(const [cat, list] of groups){
+    const group = document.createElement("div");
+    group.className = "catGroup" + (state.ui.libCollapsed[cat] ? " collapsed" : "");
+
+    const head = document.createElement("div");
+    head.className = "catHead";
+    head.innerHTML = `
+      <div class="catTitle"><span class="chev"></span>${cat}</div>
+      <div class="catCount">${list.length}</div>
+    `;
+    head.addEventListener("click", ()=>{
+      state.ui.libCollapsed[cat] = !state.ui.libCollapsed[cat];
+      renderNodeLibrary();
+      saveState();
+    });
+
+    const body = document.createElement("div");
+    body.className = "catBody";
+
+    for(const {type, def} of list){
+      const card = document.createElement("div");
+      card.className = "nodeCard";
+      card.innerHTML = `
+        <div class="stack">
+          <div class="name">${def.title}</div>
+          <div class="desc">${def.desc}</div>
+        </div>
+        <div class="tag">${def.tag}</div>
+      `;
+      card.addEventListener("click", ()=>{
+        try{
+          const id = addNodeAtViewCenter(type);
+          selectNode(id);
+          toast(`Added: ${NODE_DEFS[type].title}`);
+          saveState();
+          markDirtyAuto();
+        }catch(e){ console.warn(e); toast(e.message||String(e)); }
+      });
+      body.appendChild(card);
+    }
+
+    group.appendChild(head);
+    group.appendChild(body);
+    frag.appendChild(group);
+  }
+
+  nodeListEl.appendChild(frag);
+}
+nodeSearchEl.addEventListener("input", renderNodeLibrary);
+btnAddQuick.addEventListener("click", ()=>{ openNodePicker(""); });
+function renderParamEditor(){
+  const wrap = document.getElementById("paramEditor");
+  wrap.innerHTML = "";
+  const table = document.createElement("div");
+  table.style.display="flex";
+  table.style.flexDirection="column";
+  table.style.gap="8px";
+  state.params.forEach((row, idx)=>{
+    const r = document.createElement("div");
+    r.style.display="grid";
+    r.style.gridTemplateColumns="1fr 1.2fr 40px";
+    r.style.gap="8px";
+    const k = document.createElement("input");
+    k.value=row.k||"";
+    k.style.fontFamily="var(--mono)";
+    k.style.fontSize="12px";
+    k.disabled=!!row.locked;
+    k.addEventListener("input", ()=>{
+      row.k = k.value.replace(/\s+/g,"").slice(0,32);
+      saveState(); markDirtyAuto();
+    });
+    const v = document.createElement("input");
+    v.value=row.v||"";
+    v.style.fontFamily="var(--mono)";
+    v.style.fontSize="12px";
+    v.disabled=!!row.locked;
+    v.addEventListener("input", ()=>{
+      row.v = v.value;
+      saveState(); markDirtyAuto();
+    });
+    const x = document.createElement("button");
+    x.className="btn";
+    x.textContent = row.locked ? "•" : "×";
+    x.disabled = !!row.locked;
+    x.style.padding="8px 10px";
+    x.style.borderRadius="12px";
+    x.addEventListener("click", ()=>{
+      if(row.locked) return;
+      state.params.splice(idx,1);
+      renderParamEditor();
+      saveState(); markDirtyAuto();
+    });
+    r.appendChild(k); r.appendChild(v); r.appendChild(x);
+    table.appendChild(r);
+  });
+  wrap.appendChild(table);
+  const add = document.createElement("button");
+  add.className="btn";
+  add.style.marginTop="10px";
+  add.textContent="Add param";
+  add.addEventListener("click", ()=>{
+    state.params.push({k:"P"+(state.params.length), v:"1"});
+    renderParamEditor();
+    saveState(); markDirtyAuto();
+  });
+  wrap.appendChild(add);
+}
+
+/* ---------------------------
+   UI: Graph rendering + interactions (same as v2)
+---------------------------- */
+const g = {
+  draggingNodeId: null, dragStart: null,
+  resizingNodeId: null, resizeStart: null,
+  panning: false, panStart: null,
+  linking: null,
+};
+
+function applyGraphTransform(){
+  const z = state.ui.zoom;
+  nodesLayer.style.transform = `translate(${state.ui.panX}px, ${state.ui.panY}px) scale(${z})`;
+  graphBg.style.transform = `translate(${state.ui.panX}px, ${state.ui.panY}px) scale(${z})`;
+  zoomPill.textContent = `Zoom ${Math.round(z*100)}%`;
+  requestLinkRedraw();
+}
+function screenToWorld(sx, sy){
+  const z = state.ui.zoom;
+  return { x: (sx - state.ui.panX)/z, y: (sy - state.ui.panY)/z };
+}
+function worldToScreen(wx, wy){
+  const z = state.ui.zoom;
+  return { x: wx*z + state.ui.panX, y: wy*z + state.ui.panY };
+}
+
+function ensureNodeFits(nodeId){
+  const node = state?.nodes?.[nodeId];
+  if(!node) return;
+  const el = nodesLayer?.querySelector(`.node[data-node-id="${nodeId}"]`);
+  if(!el) return;
+  const head = el.querySelector(".nodeHead");
+  const body = el.querySelector(".nodeBody");
+  const wantH = (head?.offsetHeight||0) + (body?.scrollHeight||0) + 2;
+  const def = NODE_DEFS[node.type] || {};
+  const minH = def.minH || 140;
+  const maxH = def.maxH || 1800;
+  const curH = node.h || 240;
+  const nextH = Math.max(curH, Math.min(maxH, Math.max(minH, wantH)));
+  if(Math.abs(nextH - curH) > 1){
+    node.h = nextH;
+    el.style.height = nextH + "px";
+    requestLinkRedraw();
+  }
+}
+
+function ensureAllNodesFit(){
+  for(const id in state.nodes) ensureNodeFits(id);
+}
+
+function renderGraph(){
+  nodesLayer.innerHTML = "";
+  for(const node of Object.values(state.nodes)){
+    nodesLayer.appendChild(renderNodeEl(node));
+  }
+  applyGraphTransform();
+  requestLinkRedraw();
+  requestAnimationFrame(()=>{ ensureAllNodesFit(); });
+}
+
+function renderNodeEl(node){
+  const def = NODE_DEFS[node.type];
+  const el = document.createElement("div");
+  el.className = "node" + (state.ui.selectedNodeId===node.id ? " selected" : "");
+  el.dataset.nodeId = node.id;
+  el.style.left = (node.x||0) + "px";
+  el.style.top  = (node.y||0) + "px";
+  el.style.width = (node.w||320) + "px";
+  el.style.height = (node.h||220) + "px";
+
+  const head = document.createElement("div");
+  head.className="nodeHead";
+
+  const title = document.createElement("div");
+  title.className="nodeTitle";
+  title.innerHTML = `<span style="color:var(--text)">${def.title}</span><span class="nodeTypePill">${def.tag}</span>`;
+  head.appendChild(title);
+
+  const btns = document.createElement("div");
+  btns.className="nodeBtns";
+
+  const bDup = document.createElement("button");
+  bDup.className="nodeBtn";
+  bDup.title="Duplicate";
+  bDup.textContent="⎘";
+  bDup.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    const n2 = duplicateNode(node.id);
+    selectNode(n2);
+    saveState(); markDirtyAuto();
+    toast("Duplicated");
+  });
+
+  const bDel = document.createElement("button");
+  bDel.className="nodeBtn";
+  bDel.title="Delete";
+  bDel.textContent="×";
+  bDel.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    deleteNode(node.id);
+    saveState(); markDirtyAuto();
+    toast("Deleted");
+  });
+
+
+// Singleton UI nodes: keep them safe (can't duplicate/delete)
+if(node.type === "Studio View"){
+  bDup.style.display = "none";
+  bDel.style.display = "none";
+}
+
+  btns.appendChild(bDup);
+  btns.appendChild(bDel);
+  head.appendChild(btns);
+
+  head.addEventListener("pointerdown", (e)=>{
+    if(e.button===2) return;
+    selectNode(node.id);
+    g.draggingNodeId = node.id;
+    g.dragStart = {sx:e.clientX, sy:e.clientY, x:node.x, y:node.y, zoom:state.ui.zoom};
+    head.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  head.addEventListener("pointermove", (e)=>{
+    if(!g.draggingNodeId || g.draggingNodeId!==node.id) return;
+    const dx = (e.clientX - g.dragStart.sx)/g.dragStart.zoom;
+    const dy = (e.clientY - g.dragStart.sy)/g.dragStart.zoom;
+    node.x = g.dragStart.x + dx;
+    node.y = g.dragStart.y + dy;
+    el.style.left = node.x + "px";
+    el.style.top  = node.y + "px";
+    requestLinkRedraw();
+    saveStateThrottled();
+  });
+  head.addEventListener("pointerup", (e)=>{
+    if(g.draggingNodeId===node.id){
+      g.draggingNodeId = null;
+      g.dragStart = null;
+      try{ head.releasePointerCapture(e.pointerId);}catch(_){}
+      saveState();
+    }
+  });
+
+  el.addEventListener("pointerdown", (e)=>{
+    if(e.button===2) return;
+    selectNode(node.id);
+  });
+
+
+const body = document.createElement("div");
+body.className="nodeBody";
+
+const portsLeft = document.createElement("div");
+portsLeft.className = "portsLeft";
+
+const portsRight = document.createElement("div");
+portsRight.className = "portsRight";
+
+if(def.inputs?.length){
+  for(const inp of def.inputs){
+    portsLeft.appendChild(portRow(node.id, inp.name, inp.type, "in"));
+  }
+}
+if(def.outputs?.length){
+  for(const out of def.outputs){
+    portsRight.appendChild(portRow(node.id, out.name, out.type, "out"));
+  }
+}
+
+const content = document.createElement("div");
+content.className="nodeContent";
+if(def.uiSchema){ renderSchema(def.uiSchema, node, content); } else { def.render(node, content); }
+
+body.appendChild(portsLeft);
+body.appendChild(content);
+body.appendChild(portsRight);
+
+  const resize = document.createElement("div");
+  resize.className="resizeHandle";
+  resize.title="Resize";
+
+  resize.addEventListener("pointerdown", (e)=>{
+    e.stopPropagation();
+    selectNode(node.id);
+    g.resizingNodeId = node.id;
+    g.resizeStart = {sx:e.clientX, sy:e.clientY, w:node.w||320, h:node.h||220, zoom:state.ui.zoom};
+    resize.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  resize.addEventListener("pointermove", (e)=>{
+    if(g.resizingNodeId!==node.id) return;
+    const dx = (e.clientX - g.resizeStart.sx)/g.resizeStart.zoom;
+    const dy = (e.clientY - g.resizeStart.sy)/g.resizeStart.zoom;
+    node.w = clamp(g.resizeStart.w + dx, 240, 2400);
+    node.h = clamp(g.resizeStart.h + dy, 160, 2400);
+    el.style.width = node.w + "px";
+    el.style.height = node.h + "px";
+    requestLinkRedraw();
+    saveStateThrottled();
+  });
+  resize.addEventListener("pointerup", (e)=>{
+    if(g.resizingNodeId===node.id){
+      g.resizingNodeId=null;
+      g.resizeStart=null;
+      try{ resize.releasePointerCapture(e.pointerId);}catch(_){}
+      saveState();
+    }
+  });
+
+  el.appendChild(head);
+  el.appendChild(body);
+  el.appendChild(resize);
+  return el;
+}
+
+// Re-render a node's UI content (for schema when/visibility changes)
+const __nodeRefreshPending = new Set();
+let __nodeRefreshTimer = null;
+
+function scheduleRefreshNodeContent(nodeId){
+  if(!nodeId) return;
+  __nodeRefreshPending.add(String(nodeId));
+  clearTimeout(__nodeRefreshTimer);
+  __nodeRefreshTimer = setTimeout(()=>{
+    const ids = Array.from(__nodeRefreshPending);
+    __nodeRefreshPending.clear();
+    for(const id of ids) refreshNodeContent(id);
+  }, 0);
+}
+
+function refreshNodeContent(nodeId){
+  const node = state?.nodes?.[nodeId];
+  if(!node) return;
+  const def = NODE_DEFS[node.type];
+  if(!def) return;
+  const el = nodesLayer?.querySelector(`.node[data-node-id="${nodeId}"]`);
+  if(!el) return;
+  const content = el.querySelector(".nodeContent");
+  if(!content) return;
+  const st = content.scrollTop || 0;
+  content.innerHTML = "";
+  try{
+    if(def.uiSchema) renderSchema(def.uiSchema, node, content);
+    else if(def.render) def.render(node, content);
+  }catch(err){
+    console.warn(err);
+    const h = document.createElement("div");
+    h.className="hint";
+    h.innerHTML = "UI render error: " + (err.message||String(err));
+    content.appendChild(h);
+  }
+  content.scrollTop = st;
+  requestAnimationFrame(()=> ensureNodeFits(nodeId));
+}
+
+
+function portRow(nodeId, portName, portType, dir){
+  const row = document.createElement("div");
+  row.className = "portRow " + dir;
+
+  const dot = document.createElement("div");
+  dot.className = "dot " + dir;
+  dot.dataset.nodeId = nodeId;
+  dot.dataset.portName = portName;
+  dot.dataset.portType = portType;
+  dot.dataset.dir = dir;
+
+  const label = document.createElement("div");
+  label.className = "portLabel";
+  label.textContent = portName;
+
+  function ensureLinks(){
+    if(!Array.isArray(state.links)) state.links = [];
+    return state.links;
+  }
+
+  function disconnectInput(){
+    const links = ensureLinks();
+    const linkIdx = links.findIndex(L=>L?.to?.node===nodeId && L?.to?.port===portName);
+    if(linkIdx>=0){
+      links.splice(linkIdx, 1);
+      saveState(); markDirtyAuto();
+      toast("Disconnected");
+      requestLinkRedraw();
+      return true;
+    }
+    return false;
+  }
+
+  function findInputDotAt(x, y){
+    const t = document.elementFromPoint(x, y);
+    if(!t) return null;
+    if(t.classList?.contains("dot") && t.dataset?.dir==="in") return t;
+    const rowIn = t.closest?.(".portRow.in");
+    if(rowIn){
+      const d = rowIn.querySelector?.(".dot.in");
+      if(d) return d;
+    }
+    const anyDot = t.closest?.(".dot.in");
+    return anyDot || null;
+  }
+
+  function beginLinkDrag(e){
+    e.stopPropagation();
+    e.preventDefault();
+    selectNode(nodeId);
+
+    if(dir === "in"){
+      disconnectInput();
+      return;
+    }
+
+    ensureLinks();
+    g.linking = { pointerId: e.pointerId, fromNode: nodeId, fromPort: portName, fromType: portType, x: e.clientX, y: e.clientY };
+    setLinkTargetHighlights(portType);
+    requestLinkRedraw();
+
+    try{ dot.setPointerCapture(e.pointerId); }catch(_){}
+
+    const onMove = (ev)=>{
+      if(!g.linking || ev.pointerId !== g.linking.pointerId) return;
+      ev.preventDefault();
+      g.linking.x = ev.clientX;
+      g.linking.y = ev.clientY;
+      requestLinkRedraw();
+    };
+
+    const onUp = (ev)=>{
+      if(!g.linking || ev.pointerId !== g.linking.pointerId) return;
+      ev.preventDefault();
+      try{ dot.releasePointerCapture(ev.pointerId); }catch(_){}
+
+      const inDot = findInputDotAt(ev.clientX, ev.clientY);
+      if(inDot){
+        const toNode = inDot.dataset.nodeId;
+        const toPort = inDot.dataset.portName;
+        const toType = inDot.dataset.portType;
+
+        if(toType !== g.linking.fromType){
+          toast("Type mismatch");
+        } else {
+          const links = ensureLinks();
+          const existing = links.findIndex(L=>L?.to?.node===toNode && L?.to?.port===toPort);
+          if(existing>=0) links.splice(existing, 1);
+          links.push({
+            id: uid(),
+            from: { node: g.linking.fromNode, port: g.linking.fromPort, type: g.linking.fromType },
+            to:   { node: toNode,              port: toPort,              type: toType }
+          });
+          saveState(); markDirtyAuto();
+          toast("Connected");
+        }
+      }
+
+      g.linking = null;
+      clearLinkTargetHighlights();
+      requestLinkRedraw();
+
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+    };
+
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+  }
+
+  dot.addEventListener("pointerdown", beginLinkDrag);
+  label.addEventListener("pointerdown", beginLinkDrag);
+
+  if(dir==="in"){
+    row.appendChild(dot);
+    row.appendChild(label);
+  } else {
+    row.appendChild(label);
+    row.appendChild(dot);
+    row.style.justifyContent = "flex-end";
+  }
+  return row;
+}
+
+function selectNode(id){
+  state.ui.selectedNodeId = id;
+  for(const el of nodesLayer.querySelectorAll(".node")){
+    el.classList.toggle("selected", el.dataset.nodeId===id);
+  }
+  saveStateThrottled();
+}
+function rerenderNode(nodeId){
+  const node = state.nodes[nodeId];
+  if(!node) return;
+  const old = nodesLayer.querySelector(`.node[data-node-id="${nodeId}"]`);
+  if(old){
+    const fresh = renderNodeEl(node);
+    old.replaceWith(fresh);
+    requestLinkRedraw();
+  }
+}
+
+/* ---------------------------
+   Link drawing (same as v2)
+---------------------------- */
+let linkRedrawQueued = false;
+function requestLinkRedraw(){
+  if(linkRedrawQueued) return;
+  linkRedrawQueued = true;
+  requestAnimationFrame(()=>{
+    linkRedrawQueued = false;
+    drawLinks();
+  });
+}
+
+/* ---- Link type coloring + target highlights ---- */
+const TYPE_COLORS = {
+  path:   "rgba(106,166,255,0.92)",
+  mesh:   "rgba(255,176,82,0.92)",
+  rules:  "rgba(190,120,255,0.92)",
+  profile:"rgba(85,255,175,0.92)",
+  number: "rgba(255,255,255,0.82)"
+};
+function colorForType(t){
+  return TYPE_COLORS[t] || (getComputedStyle(document.body).getPropertyValue("--accent").trim() || "rgba(66,255,179,0.95)");
+}
+function setLinkTargetHighlights(fromType){
+  document.body.classList.add("linking");
+  const dots = nodesLayer.querySelectorAll(".dot.in");
+  dots.forEach(d=>{
+    const ok = (d.dataset.portType === fromType);
+    d.classList.toggle("canDrop", ok);
+    d.classList.toggle("cantDrop", !ok);
+  });
+}
+function clearLinkTargetHighlights(){
+  document.body.classList.remove("linking");
+  const dots = nodesLayer.querySelectorAll(".dot.in");
+  dots.forEach(d=>{
+    d.classList.remove("canDrop","cantDrop");
+  });
+}
+function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
+  const dx = Math.abs(x2-x1);
+  const c1x = x1 + Math.min(180, dx*0.5);
+  const c2x = x2 - Math.min(180, dx*0.5);
+  const c1y = y1;
+  const c2y = y2;
+
+  const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#42ffb3";
+  const stroke = col || accent;
+
+  ctx.lineCap = "round";
+
+  if(mode==="ghost"){
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = w;
+    ctx.setLineDash([6,6]);
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if(mode==="broken"){
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,80,80,0.92)";
+    ctx.lineWidth = w;
+    ctx.setLineDash([8,6]);
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  ctx.save();
+  // outline
+  ctx.strokeStyle = "rgba(0,0,0,0.26)";
+  ctx.lineWidth = w + 3;
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
+  ctx.stroke();
+
+  // main stroke
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = w;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawLinks(){
+  try{
+    const rect = graphWrap.getBoundingClientRect();
+const px = devicePixelRatio || 1;
+const w = Math.floor(rect.width * px);
+const h = Math.floor(rect.height * px);
+if(linkCanvas.width !== w || linkCanvas.height !== h){
+  linkCanvas.width = w;
+  linkCanvas.height = h;
+  linkCanvas.style.width = rect.width + "px";
+  linkCanvas.style.height = rect.height + "px";
+}
+const ctx = linkCanvas.getContext("2d");
+ctx.setTransform(px,0,0,px,0,0);
+ctx.clearRect(0,0,rect.width,rect.height);
+
+    const getNodeCenter = (nodeId)=>{
+      const el = nodesLayer.querySelector(`.node[data-node-id="${nodeId}"]`);
+      if(!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x:(r.left+r.right)/2 - rect.left, y:(r.top+r.bottom)/2 - rect.top };
+    };
+
+    const getDotCenter = (nodeId, portName, dir)=>{
+      let dot = nodesLayer.querySelector(`.dot[data-node-id="${nodeId}"][data-port-name="${portName}"][data-dir="${dir}"]`);
+      if(!dot){
+        dot = nodesLayer.querySelector(`.dot.${dir}[data-node-id="${nodeId}"][data-port-name="${portName}"]`);
+      }
+      if(!dot){
+        const row = nodesLayer.querySelector(`.portRow.${dir} .dot[data-node-id="${nodeId}"][data-port-name="${portName}"]`);
+        if(row) dot = row;
+      }
+      if(!dot) return null;
+      const r = dot.getBoundingClientRect();
+      return { x: (r.left + r.right)/2 - rect.left, y: (r.top + r.bottom)/2 - rect.top };
+    };
+
+    for(const L of (state.links||[])){
+      if(!L?.from || !L?.to) continue;
+      const aDot = getDotCenter(L.from.node, L.from.port, "out");
+      const bDot = getDotCenter(L.to.node, L.to.port, "in");
+      const a = aDot || getNodeCenter(L.from.node);
+      const b = bDot || getNodeCenter(L.to.node);
+      if(!a || !b) continue;
+
+      const col = colorForType(L.from.type || L.to.type);
+      const broken = (!aDot || !bDot);
+      drawBezier(ctx, a.x, a.y, b.x, b.y, broken ? 2.0 : 2.4, broken ? "broken" : "link", col);
+    }
+
+    if(g.linking){
+      const a = getDotCenter(g.linking.fromNode, g.linking.fromPort, "out") || getNodeCenter(g.linking.fromNode);
+      if(a){
+        const bx = g.linking.x - rect.left;
+        const by = g.linking.y - rect.top;
+        drawBezier(ctx, a.x, a.y, bx, by, 2.0, "ghost", null);
+      }
+    }
+  }catch(e){
+    console.warn("drawLinks error:", e);
+    try{
+      const rect = graphWrap.getBoundingClientRect();
+      const ctx = linkCanvas.getContext("2d");
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+      ctx.clearRect(0,0,rect.width,rect.height);
+    }catch(_){}
+  }
+}
+
+/* ---------------------------
+   Pan/zoom graph
+---------------------------- */
+const keys = {space:false, spaceDownAt:0, spaceUsedForPan:false};
+function isTyping(){
+  const a = document.activeElement;
+  return a && (a.tagName==="INPUT" || a.tagName==="TEXTAREA" || a.isContentEditable);
+}
+graphWrap.addEventListener("wheel", (e)=>{
+  e.preventDefault();
+  const rect = graphWrap.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const before = screenToWorld(mx, my);
+  const zoomFactor = Math.exp(-e.deltaY * 0.0012);
+  const z = clamp(state.ui.zoom * zoomFactor, 0.25, 2.8);
+  state.ui.zoom = z;
+  const after = worldToScreen(before.x, before.y);
+  state.ui.panX += (mx - after.x);
+  state.ui.panY += (my - after.y);
+  applyGraphTransform();
+  requestLinkRedraw();
+  saveStateThrottled();
+}, {passive:false});
+
+// Focus graph on background click (so Space works even if you previously typed in an input)
+graphWrap.addEventListener("pointerdown", (e)=>{
+  const t = e.target;
+  const tid = t && t.id;
+  if(t === graphWrap || tid==="graphBg" || tid==="linkCanvas"){
+    try{
+      const a = document.activeElement;
+      if(a && (a.tagName==="INPUT" || a.tagName==="TEXTAREA" || a.isContentEditable)) a.blur();
+    }catch(_){}
+    try{ graphWrap.focus({preventScroll:true}); }catch(_){}
+  }
+}, {capture:true});
+
+graphWrap.addEventListener("pointerdown", (e)=>{
+  if(e.button===2) return;
+  if(keys.space){
+    keys.spaceUsedForPan = true;
+    g.panning = true;
+    g.panStart = {sx:e.clientX, sy:e.clientY, panX:state.ui.panX, panY:state.ui.panY};
+    graphWrap.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+});
+graphWrap.addEventListener("pointermove", (e)=>{
+  if(!g.panning) return;
+  const dx = e.clientX - g.panStart.sx;
+  const dy = e.clientY - g.panStart.sy;
+  state.ui.panX = g.panStart.panX + dx;
+  state.ui.panY = g.panStart.panY + dy;
+  applyGraphTransform();
+  requestLinkRedraw();
+  saveStateThrottled();
+});
+graphWrap.addEventListener("pointerup", (e)=>{
+  if(g.panning){
+    g.panning = false;
+    g.panStart = null;
+    try{ graphWrap.releasePointerCapture(e.pointerId);}catch(_){}
+    saveState();
+  }
+});
+graphWrap.addEventListener("mousedown", (e)=>{
+  if(e.button!==1) return;
+  e.preventDefault();
+  g.panning = true;
+  g.panStart = {sx:e.clientX, sy:e.clientY, panX:state.ui.panX, panY:state.ui.panY};
+  const move = (ev)=>{
+    const dx = ev.clientX - g.panStart.sx;
+    const dy = ev.clientY - g.panStart.sy;
+    state.ui.panX = g.panStart.panX + dx;
+    state.ui.panY = g.panStart.panY + dy;
+    applyGraphTransform(); requestLinkRedraw(); saveStateThrottled();
+  };
+  const up = ()=>{
+    g.panning=false; g.panStart=null;
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", up);
+    saveState();
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+});
+
+/* ---------------------------
+   Node CRUD
+---------------------------- */
+function addNode(type, x, y){
+  const def = NODE_DEFS[type];
+  const id = uid();
+  const w = def?.defaultW ?? 320;
+  const h = def?.defaultH ?? 240;
+  state.nodes[id] = { id, type, x:x??120, y:y??120, w, h, data:def.initData() };
+  renderGraph();
+  return id;
+}
+
+
+// Demo helper: connect nodes by port index or name (used by demo library)
+function resolvePortName(nodeId, isOutput, portRef){
+  const n = state.nodes[nodeId];
+  const def = n ? NODE_DEFS[n.type] : null;
+  const ports = (isOutput ? def?.outputs : def?.inputs) || [];
+  if(typeof portRef === "number"){
+    return ports[portRef]?.name || (isOutput ? "out" : "in");
+  }
+  if(typeof portRef === "string" && portRef) return portRef;
+  return isOutput ? (ports[0]?.name || "out") : (ports[0]?.name || "in");
+}
+function resolvePortType(nodeId, isOutput, portName){
+  const n = state.nodes[nodeId];
+  const def = n ? NODE_DEFS[n.type] : null;
+  const ports = (isOutput ? def?.outputs : def?.inputs) || [];
+  const p = ports.find(pp=>pp.name===portName) || ports[0];
+  return p?.type || "any";
+}
+
+function connect(fromNodeId, outPort, toNodeId, inPort){
+  const fromPort = resolvePortName(fromNodeId, true, outPort);
+  const toPort   = resolvePortName(toNodeId, false, inPort);
+  const type     = resolvePortType(fromNodeId, true, fromPort);
+  if(!Array.isArray(state.links)) state.links = [];
+  state.links.push({ id:uid(), from:{ node:fromNodeId, port:fromPort, type }, to:{ node:toNodeId, port:toPort, type } });
+  return true;
+}
+
+
+
+
+// Center the graph view on a node (used by demos)
+function centerViewOn(nodeId){
+  const rect = graphWrap.getBoundingClientRect();
+  const target = (typeof nodeId === "string") ? state.nodes[nodeId] : nodeId;
+  if(!target) return;
+  const cx = (target.x + (target.w||320)/2);
+  const cy = (target.y + (target.h||220)/2);
+  state.ui.panX = rect.width/2 - cx*state.ui.zoom;
+  state.ui.panY = rect.height/2 - cy*state.ui.zoom;
+  applyGraphTransform();
+  requestLinkRedraw();
+  saveState();
+}
+function addNodeAtViewCenter(type){
+  const rect = graphWrap.getBoundingClientRect();
+  const center = screenToWorld(rect.width*0.5, rect.height*0.5);
+  // Nudge so multiple adds don't stack perfectly
+  const nudge = { x:(Math.random()-0.5)*60, y:(Math.random()-0.5)*40 };
+  return addNode(type, center.x + nudge.x, center.y + nudge.y);
+}
+
+function duplicateNode(id){
+  const n = state.nodes[id];
+  if(!n) return null;
+  const id2 = uid();
+  state.nodes[id2] = { id:id2, type:n.type, x:(n.x||0)+30, y:(n.y||0)+30, w:n.w, h:n.h, data: JSON.parse(JSON.stringify(n.data)) };
+  renderGraph();
+  return id2;
+}
+function deleteNode(id){
+  if(!state.nodes[id]) return;
+  delete state.nodes[id];
+  state.links = state.links.filter(L=>L.from.node!==id && L.to.node!==id);
+  if(state.ui.selectedNodeId===id) state.ui.selectedNodeId=null;
+  renderGraph();
+}
+function ensureDefaultGraph(){
+  if(Object.keys(state.nodes).length) return;
+  const idPath = addNode("Path", 110, 140);
+  const idXfm  = addNode("Transform", 520, 160);
+  const idNP   = addNode("Non-Planar", 920, 170);
+  const idRules= addNode("Rules", 1320, 190);
+  const idPrn  = addNode("Printer", 520, 470);
+  const idExp  = addNode("Export", 1320, 450);
+  state.links.push(
+    {id:uid(), from:{node:idPath, port:"path", type:"path"}, to:{node:idXfm, port:"in", type:"path"}},
+    {id:uid(), from:{node:idXfm, port:"out", type:"path"}, to:{node:idNP, port:"in", type:"path"}},
+    {id:uid(), from:{node:idNP, port:"out", type:"path"}, to:{node:idRules, port:"in", type:"path"}},
+    {id:uid(), from:{node:idNP, port:"out", type:"path"}, to:{node:idExp, port:"path", type:"path"}},
+    {id:uid(), from:{node:idRules, port:"rules", type:"rules"}, to:{node:idExp, port:"rules", type:"rules"}},
+    {id:uid(), from:{node:idPrn, port:"profile", type:"profile"}, to:{node:idExp, port:"profile", type:"profile"}},
+  );
+  state.ui.selectedNodeId = idExp;
+  renderGraph();
+}
+
+/* ---------------------------
+   Output panel updates
+---------------------------- */
+function updateOutputUI(){
+  const gcode = state.outputs.gcode || "";
+  const stats = state.outputs.stats || {points:0,length:0,e:0,timeMin:0};
+  const exp = Object.values(state.nodes).find(n=>n.type==="Export");
+  const cap = exp?.data?.capPreviewChars ?? 200000;
+  gcodePre.textContent = gcode ? gcode.slice(0, cap) : "No output yet. Click “Run graph”.";
+  chipPts.textContent = String(stats.points||0);
+  chipLen.textContent = fmt(stats.length||0, 1);
+  chipE.textContent = fmt(stats.e||0, 1);
+  chipT.textContent = fmt(stats.timeMin||0, 1);
+  outPill.textContent = gcode ? "Ready" : "No output";
+}
+function clearOutputs(){
+  state.outputs.gcode = "";
+  state.outputs.path = [];
+  state.outputs.mesh = null;
+  state.outputs.stats = {points:0,length:0,e:0,timeMin:0};
+  updateOutputUI();
+  schedulePreviewUpdate();
+}
+
+/* ---------------------------
+   Auto-run debouncer
+---------------------------- */
+let autoTimer = null;
+function markDirtyAuto(){
+  evalDirty = true;
+  if(!state.ui.autoRun) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(()=>{
+    try{ evaluateGraph(); }catch(e){ console.warn(e); setStatus("Error"); toast(e.message||String(e)); }
+  }, 220);
+}
+
+/* ---------------------------
+   Persistence
+---------------------------- */
+function saveState(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+}
+let saveT=null;
+function saveStateThrottled(){
+  clearTimeout(saveT);
+  saveT = setTimeout(saveState, 120);
+}
+function sanitizeImported(obj){
+  const base = defaultState();
+  const s = {...base, ...obj};
+  s.ui = {...base.ui, ...(obj?.ui||{})};
+  s.params = Array.isArray(obj?.params) ? obj.params.map(r=>({k:String(r.k??""), v:String(r.v??""), locked:!!r.locked})) : base.params;
+  if(!s.params.some(p=>p.k==="pi")) s.params.unshift({k:"pi", v:String(Math.PI), locked:true});
+  if(!s.params.some(p=>p.k==="tau")) s.params.unshift({k:"tau", v:String(Math.PI*2), locked:true});
+  s.nodes = (obj?.nodes && typeof obj.nodes==="object") ? obj.nodes : {};
+  s.links = Array.isArray(obj?.links) ? obj.links : [];
+  s.outputs = {...base.outputs, ...(obj?.outputs||{})};
+  s.orca = {...base.orca, ...(obj?.orca||{})};
+  if(!s.orca || typeof s.orca!=="object") s.orca = {...base.orca};
+  if(!s.orca.files || typeof s.orca.files!=="object") s.orca.files = {};
+  s.orca.printers = Array.isArray(s.orca.printers) ? s.orca.printers : [];
+  s.orca.filaments = Array.isArray(s.orca.filaments) ? s.orca.filaments : [];
+  s.orca.processes = Array.isArray(s.orca.processes) ? s.orca.processes : [];
+
+  s.ui.zoom = clamp(Number(s.ui.zoom||1), 0.25, 2.8);
+  s.ui.panX = Number(s.ui.panX||60);
+  s.ui.panY = Number(s.ui.panY||80);
+  for(const [id, n] of Object.entries(s.nodes)){
+    if(!NODE_DEFS[n.type]){ delete s.nodes[id]; continue; }
+    if(!n.data) n.data = NODE_DEFS[n.type].initData();
+    if(n.w==null) n.w=320; if(n.h==null) n.h=240;
+  }
+  s.links = s.links.filter(L=>{
+    const a = s.nodes[L.from?.node];
+    const b = s.nodes[L.to?.node];
+    if(!a || !b) return false;
+    const defA = NODE_DEFS[a.type], defB = NODE_DEFS[b.type];
+    const out = defA.outputs?.find(p=>p.name===L.from.port);
+    const inp = defB.inputs?.find(p=>p.name===L.to.port);
+    return out && inp && out.type===inp.type;
+  });
+  return s;
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultState();
+    return sanitizeImported(JSON.parse(raw));
+  }catch(e){
+    return defaultState();
+  }
+}
+
+/* ---------------------------
+   Preview: Offline WebGL orbit line renderer
+---------------------------- */
+function cssToRGB01(css){
+  css = (css||"").trim();
+  // rgba(r,g,b,a) or rgb
+  const m = css.match(/rgba?\(([^)]+)\)/i);
+  if(m){
+    const parts = m[1].split(",").map(s=>s.trim());
+    const r = Number(parts[0]||0)/255;
+    const g = Number(parts[1]||0)/255;
+    const b = Number(parts[2]||0)/255;
+    const a = parts[3]!=null ? Number(parts[3]) : 1;
+    return [r,g,b,a];
+  }
+  // hex
+  const h = css.replace("#","").trim();
+  if(h.length===3){
+    const r=parseInt(h[0]+h[0],16)/255, g=parseInt(h[1]+h[1],16)/255, b=parseInt(h[2]+h[2],16)/255;
+    return [r,g,b,1];
+  }
+  if(h.length===6){
+    const r=parseInt(h.slice(0,2),16)/255, g=parseInt(h.slice(2,4),16)/255, b=parseInt(h.slice(4,6),16)/255;
+    return [r,g,b,1];
+  }
+  return [1,1,1,1];
+}
+function v3(x=0,y=0,z=0){ return {x,y,z}; }
+function add(a,b){ return v3(a.x+b.x,a.y+b.y,a.z+b.z); }
+function sub(a,b){ return v3(a.x-b.x,a.y-b.y,a.z-b.z); }
+function mul(a,s){ return v3(a.x*s,a.y*s,a.z*s); }
+function dot(a,b){ return a.x*b.x+a.y*b.y+a.z*b.z; }
+function cross(a,b){ return v3(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x); }
+function len(a){ return Math.sqrt(dot(a,a)); }
+function norm(a){ const l=len(a)||1; return mul(a,1/l); }
+
+function mat4Identity(){
+  return new Float32Array([1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1]);
+}
+function mat4Mul(a,b){
+  const o = new Float32Array(16);
+  for(let c=0;c<4;c++){
+    for(let r=0;r<4;r++){
+      o[c*4+r] =
+        a[0*4+r]*b[c*4+0] +
+        a[1*4+r]*b[c*4+1] +
+        a[2*4+r]*b[c*4+2] +
+        a[3*4+r]*b[c*4+3];
+    }
+  }
+  return o;
+}
+function mat4Perspective(fovyRad, aspect, near, far){
+  const f = 1/Math.tan(fovyRad/2);
+  const nf = 1/(near - far);
+  const o = new Float32Array(16);
+  o[0]=f/aspect; o[1]=0; o[2]=0; o[3]=0;
+  o[4]=0; o[5]=f; o[6]=0; o[7]=0;
+  o[8]=0; o[9]=0; o[10]=(far+near)*nf; o[11]=-1;
+  o[12]=0; o[13]=0; o[14]=(2*far*near)*nf; o[15]=0;
+  return o;
+}
+function mat4LookAt(eye, target, up){
+  const f = norm(sub(target, eye));
+  const s = norm(cross(f, up));
+  const u = cross(s, f);
+
+  const o = mat4Identity();
+  o[0]=s.x; o[4]=s.y; o[8]=s.z;
+  o[1]=u.x; o[5]=u.y; o[9]=u.z;
+  o[2]=-f.x; o[6]=-f.y; o[10]=-f.z;
+
+  o[12]=-dot(s, eye);
+  o[13]=-dot(u, eye);
+  o[14]=dot(f, eye);
+  return o;
+}
+
+const preview = {
+  ok:false,
+  gl:null,
+  prog:null,
+  progSolid:null,
+  aNor:0,
+  uVP2:null,
+  uLight:null,
+  uBase:null,
+  uAlpha:null,
+  aPos:0,
+  aPos2:0,
+  uVP:null,
+  uColor:null,
+  buf:null,
+  gridBuf:null,
+  bedBuf:null,
+  toolBuf:null,
+  meshBuf:null,
+  meshTriPosBuf:null,
+  meshTriNorBuf:null,
+  countsTris:0,
+  lastMeshHash:"",
+  mvUrl:"",
+  counts:{ path:0, grid:0, bed:0, tool:0 },
+  vp:null,
+  cam:{
+    target: v3(110,110,35),
+    yaw: rad(45),
+    pitch: rad(35),
+    radius: 420,
+  },
+  drag:{
+    active:false,
+    mode:"rotate", // rotate | pan
+    x:0,y:0,
+    startYaw:0,startPitch:0,
+    startTarget:null,
+  },
+  bed:{w:220, d:220},
+};
+
+function glCreateShader(gl, type, src){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    const info = gl.getShaderInfoLog(sh);
+    gl.deleteShader(sh);
+    throw new Error("Shader compile error: "+info);
+  }
+  return sh;
+}
+function glCreateProgram(gl, vsSrc, fsSrc){
+  const vs = glCreateShader(gl, gl.VERTEX_SHADER, vsSrc);
+  const fs = glCreateShader(gl, gl.FRAGMENT_SHADER, fsSrc);
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    const info = gl.getProgramInfoLog(p);
+    gl.deleteProgram(p);
+    throw new Error("Program link error: "+info);
+  }
+  gl.deleteShader(vs); gl.deleteShader(fs);
+  return p;
+}
+function initPreviewGL(){
+  if(preview.ok) return true;
+
+  const gl = glCanvas.getContext("webgl", {antialias:true, alpha:true, premultipliedAlpha:false});
+  if(!gl){
+    preview.ok = false;
+    glCanvas.style.display="none";
+    fallback2d.style.display="block";
+    return false;
+  }
+
+  const vs = `
+    attribute vec3 aPos;
+attribute vec4 aCol;
+uniform mat4 uVP;
+varying vec4 vCol;
+void main(){
+  vCol = aCol;
+  gl_Position = uVP * vec4(aPos, 1.0);
+  gl_PointSize = 7.0;
+}
+  `;
+  const fs = `
+    precision mediump float;
+uniform vec4 uColor; // fallback constant when attribute disabled
+varying vec4 vCol;
+void main(){
+  gl_FragColor = vCol;
+}
+  `;
+  const prog = glCreateProgram(gl, vs, fs);
+  gl.useProgram(prog);
+
+  preview.gl = gl;
+  preview.prog = prog;
+  preview.aPos = gl.getAttribLocation(prog, "aPos");
+  preview.aCol = gl.getAttribLocation(prog, "aCol");
+  preview.uVP = gl.getUniformLocation(prog, "uVP");
+  preview.uColor = gl.getUniformLocation(prog, "uColor");
+
+
+// Solid mesh program (flat shaded)
+const vs2 = `
+  attribute vec3 aPos;
+  attribute vec3 aNor;
+  uniform mat4 uVP;
+  varying vec3 vN;
+  void main(){
+    vN = aNor;
+    gl_Position = uVP * vec4(aPos, 1.0);
+  }
+`;
+const fs2 = `
+  precision mediump float;
+  varying vec3 vN;
+  uniform vec3 uLight;
+  uniform vec3 uBase;
+  uniform float uAlpha;
+  void main(){
+    vec3 N = normalize(vN);
+    float d = max(0.0, dot(N, normalize(uLight)));
+    float a = 0.25 + 0.75*d;
+    gl_FragColor = vec4(uBase * a, uAlpha);
+  }
+`;
+const prog2 = glCreateProgram(gl, vs2, fs2);
+preview.progSolid = prog2;
+preview.aNor = gl.getAttribLocation(prog2, "aNor");
+preview.uVP2 = gl.getUniformLocation(prog2, "uVP");
+preview.uLight = gl.getUniformLocation(prog2, "uLight");
+preview.uBase = gl.getUniformLocation(prog2, "uBase");
+preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
+
+  preview.buf = gl.createBuffer();
+  preview.colBuf = gl.createBuffer();
+  preview.gridBuf = gl.createBuffer();
+  preview.bedBuf = gl.createBuffer();
+  preview.toolBuf = gl.createBuffer();
+  preview.meshBuf = gl.createBuffer();
+  preview.meshTriPosBuf = gl.createBuffer();
+  preview.meshTriNorBuf = gl.createBuffer();
+
+  gl.enableVertexAttribArray(preview.aPos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  gl.clearColor(0,0,0,0);
+
+  bindPreviewControls();
+  bindPreviewMeshControls();
+  applyPreviewLegendColors();
+  preview.ok = true;
+  requestAnimationFrame(drawPreviewLoop);
+  return true;
+}
+
+function resizePreviewCanvas(){
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const w = glCanvas.clientWidth|0;
+  const h = glCanvas.clientHeight|0;
+  const cw = Math.max(2, Math.floor(w*dpr));
+  const ch = Math.max(2, Math.floor(h*dpr));
+  if(glCanvas.width!==cw || glCanvas.height!==ch){
+    glCanvas.width=cw; glCanvas.height=ch;
+  }
+}
+
+function computeEye(){
+  const c = preview.cam;
+  const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  const cy = Math.cos(c.yaw), sy = Math.sin(c.yaw);
+  // Z-up, yaw around Z, pitch toward Z
+  const dir = v3(cy*cp, sy*cp, sp);
+  const eye = sub(c.target, mul(dir, c.radius));
+  return {eye, dir};
+}
+
+function updateVP(){
+  const gl = preview.gl;
+  const c = preview.cam;
+  const {eye} = computeEye();
+  const aspect = glCanvas.width / glCanvas.height;
+  const proj = mat4Perspective(rad(50), aspect, 0.5, 8000);
+  const view = mat4LookAt(eye, c.target, v3(0,0,1));
+  const vp = mat4Mul(proj, view);
+  preview.vp = vp;
+  gl.useProgram(preview.prog);
+  gl.uniformMatrix4fv(preview.uVP, false, vp);
+  if(preview.progSolid && preview.uVP2){
+    gl.useProgram(preview.progSolid);
+    gl.uniformMatrix4fv(preview.uVP2, false, vp);
+  }
+  // restore line program by default
+  gl.useProgram(preview.prog);
+}
+
+function setColor(css, alphaOverride){
+  const gl = preview.gl;
+  const rgba = cssToRGB01(css);
+  if(alphaOverride!=null) rgba[3]=alphaOverride;
+  gl.uniform4f(preview.uColor, rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+
+function setConstACol(gl, rgba){
+  // when attribute arrays are disabled, this constant is used
+  gl.disableVertexAttribArray(preview.aCol);
+  gl.vertexAttrib4f(preview.aCol, rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+
+
+
+function hexToRGBf(hex){
+  const c = cssToRGBA(hex);
+  return {r:c.r/255, g:c.g/255, b:c.b/255};
+}
+
+function hexToRGBAf(hex, a=1){
+  let h = (hex||"#ffffff").toString().trim();
+  if(h[0]==="#") h=h.slice(1);
+  if(h.length===3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const r = parseInt(h.slice(0,2),16)/255;
+  const g = parseInt(h.slice(2,4),16)/255;
+  const b = parseInt(h.slice(4,6),16)/255;
+  return [r,g,b,a];
+}
+
+const ROLE_COLORS = {
+  top:      "#42ffb3",  // electric green (accent)
+  bottom:   "#ffb84a",  // warm amber
+  infill:   "#b56bff",  // violet
+  wall_outer:"#5ee7ff", // cyan
+  wall_inner:"#2ea7ff", // blue
+  walls:    "#5ee7ff",
+  travel:   "#ffffff",
+};
+function applyPreviewLegendColors(){
+  const els = document.querySelectorAll(".pcLegend i[data-role]");
+  els.forEach(el=>{
+    const r = el.getAttribute("data-role");
+    const hex = ROLE_COLORS[r] || ROLE_COLORS[(r||"").toLowerCase()] || "#dfe7ff";
+    el.style.background = hex;
+  });
+}
+
+
+function roleToRGBA(role){
+  const r = (role||"").toString();
+  const key = ROLE_COLORS[r] ? r : (ROLE_COLORS[r.toLowerCase()] ? r.toLowerCase() : null);
+  const hex = key ? ROLE_COLORS[key] : "#dfe7ff";
+  const a = (key==="travel") ? 0.25 : 0.95;
+  return hexToRGBAf(hex, a);
+}
+
+
+
+function uploadBuffer(buf, arr){
+  const gl = preview.gl;
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW);
+}
+
+function buildBedBuffers(w,d){
+  preview.bed = {w,d};
+  const border = new Float32Array([
+    0,0,0,  w,0,0,
+    w,0,0,  w,d,0,
+    w,d,0,  0,d,0,
+    0,d,0,  0,0,0,
+  ]);
+  uploadBuffer(preview.bedBuf, border);
+  preview.counts.bed = border.length/3;
+
+  const step = 20;
+  const lines = [];
+  for(let x=0;x<=w;x+=step){
+    lines.push(x,0,0, x,d,0);
+  }
+  for(let y=0;y<=d;y+=step){
+    lines.push(0,y,0, w,y,0);
+  }
+  const grid = new Float32Array(lines);
+  uploadBuffer(preview.gridBuf, grid);
+  preview.counts.grid = grid.length/3;
+
+  // Fit cam around bed by default
+  preview.cam.target = v3(w/2, d/2, 35);
+  preview.cam.radius = Math.max(w,d) * 1.9;
+}
+
+function setPreviewPath(machinePath){
+  // machinePath points: {X,Y,z, meta:{role}}
+  const gl = preview.gl;
+  if(!gl) return;
+  const n = machinePath.length;
+
+  const pos = new Float32Array(n*3);
+  const col = new Float32Array(n*4);
+
+  for(let i=0;i<n;i++){
+    const p = machinePath[i];
+    if(!p){
+      pos[i*3+0]=0; pos[i*3+1]=0; pos[i*3+2]=0;
+      col[i*4+0]=0.8; col[i*4+1]=0.8; col[i*4+2]=0.8; col[i*4+3]=0.15;
+      continue;
+    }
+    const X = p.X ?? p.x ?? 0;
+    const Y = p.Y ?? p.y ?? 0;
+    const Z = p.z ?? 0;
+    pos[i*3+0]=X;
+    pos[i*3+1]=Y;
+    pos[i*3+2]=Z;
+
+    const role = (p.meta && p.meta.role) ? p.meta.role : (p.role||"");
+    const rgba = roleToRGBA(role);
+    col[i*4+0]=rgba[0];
+    col[i*4+1]=rgba[1];
+    col[i*4+2]=rgba[2];
+    col[i*4+3]=rgba[3];
+  }
+
+  uploadBuffer(preview.buf, pos);
+  uploadBuffer(preview.colBuf, col);
+  preview.counts.path = n;
+
+  // tool dot at last point
+  const tool = new Float32Array(3);
+  if(n){
+    tool[0]=pos[(n-1)*3+0];
+    tool[1]=pos[(n-1)*3+1];
+    tool[2]=pos[(n-1)*3+2];
+  } else {
+    tool[0]=preview.bed.w/2; tool[1]=preview.bed.d/2; tool[2]=0;
+  }
+  uploadBuffer(preview.toolBuf, tool);
+  preview.counts.tool = 1;
+}
+
+
+function setPreviewMesh(meshModel, profile){
+  const gl = preview.gl;
+  if(!gl){ return; }
+
+  // cache hash for MV (tri count + bounds)
+  try{
+    const b = meshModel?.bounds || (meshModel?.tris ? computeMeshBounds(meshModel.tris) : null);
+    const h = `${meshModel?.tris?.length||0}|${b?.minx||0},${b?.miny||0},${b?.minz||0}|${b?.maxx||0},${b?.maxy||0},${b?.maxz||0}`;
+    preview.lastMeshHash = h;
+  }catch(_){}
+
+  if(!meshModel || !meshModel.tris || meshModel.tris.length<9){
+    uploadBuffer(preview.meshBuf, new Float32Array(0));
+    preview.counts.mesh = 0;
+    uploadBuffer(preview.meshTriPosBuf, new Float32Array(0));
+    uploadBuffer(preview.meshTriNorBuf, new Float32Array(0));
+    preview.countsTris = 0;
+    return;
+  }
+
+  const tris = meshModel.tris;
+  const triCount = Math.floor(tris.length/9);
+  const maxTris = 50000;
+  const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;
+
+  // Wireframe lines
+  const lines = [];
+  // Solid triangles
+  const posTri = [];
+  const norTri = [];
+
+  for(let ti=0; ti<triCount; ti+=step){
+    const o = ti*9;
+    const ax = tris[o+0], ay = tris[o+1], az = tris[o+2];
+    const bx = tris[o+3], by = tris[o+4], bz = tris[o+5];
+    const cx = tris[o+6], cy = tris[o+7], cz = tris[o+8];
+
+    const A = toMachineXY(ax, ay, profile);
+    const B = toMachineXY(bx, by, profile);
+    const C = toMachineXY(cx, cy, profile);
+
+    // wire lines
+    lines.push(A.X, A.Y, az,  B.X, B.Y, bz);
+    lines.push(B.X, B.Y, bz,  C.X, C.Y, cz);
+    lines.push(C.X, C.Y, cz,  A.X, A.Y, az);
+
+    // normal (flat)
+    const ux = (B.X - A.X), uy = (B.Y - A.Y), uz = (bz - az);
+    const vx = (C.X - A.X), vy = (C.Y - A.Y), vz = (cz - az);
+    let nx = uy*vz - uz*vy;
+    let ny = uz*vx - ux*vz;
+    let nz = ux*vy - uy*vx;
+    const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
+    nx/=nl; ny/=nl; nz/=nl;
+
+    posTri.push(A.X, A.Y, az,  B.X, B.Y, bz,  C.X, C.Y, cz);
+    norTri.push(nx,ny,nz,  nx,ny,nz,  nx,ny,nz);
+  }
+
+  const arr = new Float32Array(lines);
+  uploadBuffer(preview.meshBuf, arr);
+  preview.counts.mesh = arr.length/3;
+
+  const arrP = new Float32Array(posTri);
+  const arrN = new Float32Array(norTri);
+  uploadBuffer(preview.meshTriPosBuf, arrP);
+  uploadBuffer(preview.meshTriNorBuf, arrN);
+  preview.countsTris = arrP.length/3;
+}
+
+function fitPreviewToData(){
+  const pts = state.outputs.path || [];
+  const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+  const prof = printerNode?.data || {bedW:220, bedD:220};
+
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+  for(const p of pts){
+    const X = p.X ?? p.x ?? 0;
+    const Y = p.Y ?? p.y ?? 0;
+    const Z = p.z ?? 0;
+    minX=Math.min(minX,X); maxX=Math.max(maxX,X);
+    minY=Math.min(minY,Y); maxY=Math.max(maxY,Y);
+    minZ=Math.min(minZ,Z); maxZ=Math.max(maxZ,Z);
+  }
+
+// Include mesh bounds (if present) so fit centers on imported geometry too
+const mesh = state.outputs.mesh;
+if(mesh && mesh.tris && mesh.tris.length>=9){
+  const b = mesh.bounds || computeMeshBounds(mesh.tris);
+  const corners = [
+    [b.min.x, b.min.y],
+    [b.max.x, b.min.y],
+    [b.min.x, b.max.y],
+    [b.max.x, b.max.y],
+  ];
+  for(const c of corners){
+    const M = toMachineXY(c[0], c[1], prof);
+    minX = Math.min(minX, M.X); maxX = Math.max(maxX, M.X);
+    minY = Math.min(minY, M.Y); maxY = Math.max(maxY, M.Y);
+  }
+  minZ = Math.min(minZ, b.min.z);
+  maxZ = Math.max(maxZ, b.max.z);
+}
+
+  if(!pts.length && !(mesh && mesh.tris && mesh.tris.length>=9)){
+    preview.cam.target = v3(prof.bedW/2, prof.bedD/2, 35);
+    preview.cam.radius = Math.max(prof.bedW, prof.bedD)*1.9;
+    return;
+  }
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
+  const dx=maxX-minX, dy=maxY-minY, dz=maxZ-minZ;
+  preview.cam.target = v3(cx,cy,cz);
+  preview.cam.radius = Math.max(80, Math.sqrt(dx*dx+dy*dy+dz*dz) * 1.6);
+  toast("Fit preview");
+}
+
+function bindPreviewControls(){
+  glCanvas.addEventListener("contextmenu", (e)=>e.preventDefault());
+
+  glCanvas.addEventListener("pointerdown", (e)=>{
+    glCanvas.setPointerCapture(e.pointerId);
+    preview.drag.active = true;
+    preview.drag.x = e.clientX;
+    preview.drag.y = e.clientY;
+    preview.drag.startYaw = preview.cam.yaw;
+    preview.drag.startPitch = preview.cam.pitch;
+    preview.drag.startTarget = {...preview.cam.target};
+    preview.drag.mode = (e.shiftKey || e.button===2) ? "pan" : "rotate";
+    e.preventDefault();
+  });
+
+  glCanvas.addEventListener("pointermove", (e)=>{
+    if(!preview.drag.active) return;
+    const dx = e.clientX - preview.drag.x;
+    const dy = e.clientY - preview.drag.y;
+
+    if(preview.drag.mode==="rotate"){
+      preview.cam.yaw = preview.drag.startYaw + dx*0.006;
+      preview.cam.pitch = clamp(preview.drag.startPitch + -dy*0.006, rad(-85), rad(85));
+    } else {
+      // pan along camera right/up
+      const {eye} = computeEye();
+      const forward = norm(sub(preview.cam.target, eye));
+      const right = norm(cross(forward, v3(0,0,1)));
+      const up = norm(cross(right, forward));
+
+      const panScale = preview.cam.radius * 0.0018;
+      const move = add(mul(right, -dx*panScale), mul(up, dy*panScale));
+      preview.cam.target = add(preview.drag.startTarget, move);
+    }
+  });
+
+  glCanvas.addEventListener("pointerup", (e)=>{
+    preview.drag.active = false;
+    try{ glCanvas.releasePointerCapture(e.pointerId);}catch(_){}
+  });
+
+  glCanvas.addEventListener("wheel", (e)=>{
+    e.preventDefault();
+    const zf = Math.exp(e.deltaY * 0.0012);
+    preview.cam.radius = clamp(preview.cam.radius * zf, 20, 8000);
+  }, {passive:false});
+
+  glCanvas.addEventListener("dblclick", ()=> fitPreviewToData());
+}
+
+function drawPreviewLoop(){
+  if(!preview.ok) return;
+  resizePreviewCanvas();
+  const gl = preview.gl;
+  gl.viewport(0,0,glCanvas.width, glCanvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  updateVP();
+
+  // Draw grid
+  gl.enableVertexAttribArray(preview.aPos);
+  const text = getComputedStyle(document.body).getPropertyValue("--text").trim();
+  setColor(text, 0.18);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.gridBuf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.18));
+  gl.drawArrays(gl.LINES, 0, preview.counts.grid);
+
+  // Draw bed border
+  setColor(text, 0.28);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.bedBuf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.28));
+  gl.drawArrays(gl.LINES, 0, preview.counts.bed);
+
+
+// Draw mesh (wireframe)
+if(preview.counts.mesh>1){
+  setColor(text, 0.14);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.meshBuf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+  setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.14));
+  gl.drawArrays(gl.LINES, 0, preview.counts.mesh);
+}
+
+  // Draw path
+  // Per-point colors by role
+
+  const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim();
+  const accent2 = getComputedStyle(document.body).getPropertyValue("--accent2").trim();
+  setColor(accent2, 0.35);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(preview.aCol);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
+  gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
+  if(preview.counts.path>1) gl.drawArrays(gl.LINE_STRIP, 0, preview.counts.path);
+
+  setColor(accent, 0.85);
+  if(preview.counts.path>1) gl.drawArrays(gl.LINE_STRIP, 0, preview.counts.path);
+
+  // Tool point
+  setColor("rgba(255,255,255,0.9)", 0.9);
+  gl.bindBuffer(gl.ARRAY_BUFFER, preview.toolBuf);
+  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.POINTS, 0, preview.counts.tool);
+
+  requestAnimationFrame(drawPreviewLoop);
+}
+
+function updatePreview(){
+  // Use WebGL if possible, else fallback 2D
+  const ok = initPreviewGL();
+  if(!ok){
+    // Basic 2D fallback (same as v2 style, but still not interactive)
+    fallback2d.style.display="block";
+    glCanvas.style.display="none";
+    const __pAll2=(state.outputs.path||[]);
+    updatePreviewControlsFromPath(__pAll2);
+    draw2dFallback(filterPreviewPath(__pAll2));
+    return;
+  }
+  fallback2d.style.display="none";
+  glCanvas.style.display="block";
+
+// If Model-Viewer mode is active, update its mesh source and skip GL drawing (toolpath overlay not supported there yet)
+if(previewMeshSettings.viewer === "mv"){
+  const mv = document.getElementById("mvPreview");
+  if(mv && customElements.get("model-viewer")){
+    const mesh = state.outputs.mesh || null;
+    try{
+      if(mesh && mesh.tris && mesh.tris.length>=9){
+        mv.style.display = "block";
+        const url = meshToObjectURL_GLb(mesh);
+        mv.src = url;
+      }else{
+        mv.removeAttribute("src");
+      }
+    }catch(err){ console.warn(err); }
+  }
+  glCanvas.style.display="none";
+  fallback2d.style.display="none";
+  return;
+}
+
+  const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+  const prof = printerNode?.data || {bedW:220, bedD:220};
+  if(prof.bedW !== preview.bed.w || prof.bedD !== preview.bed.d){
+    buildBedBuffers(prof.bedW, prof.bedD);
+  }
+  setPreviewMesh(state.outputs.mesh||null, prof);
+  const __pAll = (state.outputs.path||[]);
+  updatePreviewControlsFromPath(__pAll);
+  setPreviewPath(filterPreviewPath(__pAll));
+}
+
+let previewDirty = true;
+function schedulePreviewUpdate(){
+  previewDirty = true;
+  requestAnimationFrame(()=>{ if(previewDirty){ previewDirty=false; updatePreview(); }});
+}
+function draw2dFallback(machinePath){
+  const c = fallback2d;
+  const w = c.clientWidth || c.parentElement.clientWidth;
+  const h = c.clientHeight || c.parentElement.clientHeight;
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  c.width = Math.floor(w * dpr);
+  c.height = Math.floor(h * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--text").trim();
+  ctx.lineWidth = 1;
+  for(let x=0;x<w;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let y=0;y<h;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  const pad=24;
+  ctx.globalAlpha = 0.25;
+  ctx.strokeRect(pad, pad, w-2*pad, h-2*pad);
+  ctx.globalAlpha = 1;
+  if(!machinePath.length) return;
+  const xs = machinePath.map(p=>p.X ?? p.x);
+  const ys = machinePath.map(p=>p.Y ?? p.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const sx=(w-2*pad)/Math.max(1e-6,(maxX-minX));
+  const sy=(h-2*pad)/Math.max(1e-6,(maxY-minY));
+  const s=Math.min(sx,sy);
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent").trim();
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<machinePath.length;i++){
+    const X = pad + ((xs[i]-minX) * s);
+    const Y = h - (pad + ((ys[i]-minY) * s));
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+}
+
+/* ---------------------------
+   Demos
+---------------------------- */function demoPlanarSliceCubeV2(){
+  state = defaultState();
+  const prim = addNode("Mesh Primitive", 120, 120);
+  const slic = addNode("Slicer", 460, 140);
+  const prn  = addNode("Printer", 780, 120);
+  const exp  = addNode("Export", 980, 120);
+
+  state.nodes[prim].data.kind = "cube";
+  state.nodes[prim].data.size = 120;
+  state.nodes[prim].data.height = 40;
+  state.nodes[prim].data.bedAlign = true;
+
+  state.nodes[slic].data.mode = "planar";
+  state.nodes[slic].data.layerHeight = 0.24;
+  state.nodes[slic].data.lineWidth = 0.45;
+  state.nodes[slic].data.perimeters = 2;
+  state.nodes[slic].data.infillPct = 18;
+  state.nodes[slic].data.infillPattern = "grid";
+  state.nodes[slic].data.topLayers = 4;
+  state.nodes[slic].data.bottomLayers = 4;
+  state.nodes[slic].data.bedAlign = true;
+
+  connect(prim, 0, slic, 0);
+  connect(slic, 1, exp, 0);
+  connect(prn, 0, exp, 1);
+
+  selectNode(exp);
+  centerViewOn(prim);
+  toast("Loaded demo: Planar Slice (v2) — Cube");
+  markDirtyAuto();
+}
+
+function demoSTLPlanarSliceTemplateV2(){
+  state = defaultState();
+  const imp = addNode("Import Mesh", 120, 120);
+  const slic = addNode("Slicer", 460, 140);
+  const prn  = addNode("Printer", 780, 120);
+  const exp  = addNode("Export", 980, 120);
+
+  state.nodes[slic].data.mode = "planar";
+  state.nodes[slic].data.layerHeight = 0.24;
+
+  connect(imp, 0, slic, 0);
+  connect(slic, 1, exp, 0);
+  connect(prn, 0, exp, 1);
+
+  selectNode(imp);
+  centerViewOn(imp);
+  toast("Loaded demo: STL Planar Slice (v2) — template");
+  markDirtyAuto();
+}
+
+/* ---------------------------
+   Geometry & Slicing v2
+   - Import Mesh (preview) -> outputs mesh
+   - Mesh Primitive (preview) -> outputs mesh
+   - Slicer -> inputs mesh, outputs mesh + path
+   Keep old Mesh Primitive & Mesh Import behavior as legacy (auto-migrated on load)
+----------------------------*/
+
+const SCHEMA_IMPORT_MESH_V2 = [
+  {key:"bedAlign", label:"Bed align (minZ→0)", ui:"toggle"},
+  {key:"centerXY", label:"Center XY", ui:"toggle"},
+  {key:"scale", label:"Scale", ui:"number", min:0.01, max:100, step:0.01},
+  {key:"rxDeg", label:"Rot X°", ui:"number", min:-180, max:180, step:1},
+  {key:"ryDeg", label:"Rot Y°", ui:"number", min:-180, max:180, step:1},
+  {key:"rzDeg", label:"Rot Z°", ui:"number", min:-180, max:180, step:1},
+  {key:"tx", label:"Offset X", ui:"number", min:-9999, max:9999, step:0.1},
+  {key:"ty", label:"Offset Y", ui:"number", min:-9999, max:9999, step:0.1},
+  {key:"tz", label:"Offset Z", ui:"number", min:-9999, max:9999, step:0.1},
+];
+
+const SCHEMA_MESH_PRIMITIVE_V2 = [
+  {key:"size", label:"Size (mm)", ui:"number", min:5, max:600, step:1},
+  {key:"height", label:"Height (mm)", ui:"number", min:0.1, max:600, step:1},
+  {key:"seg", label:"Segments", ui:"number", min:8, max:240, step:1},
+  {key:"waveAmp", label:"Wave amp", ui:"number", min:0, max:80, step:0.5, when:(d)=>d.kind==="wavy"},
+  {key:"waveFreq", label:"Wave freq", ui:"number", min:0.1, max:20, step:0.1, when:(d)=>d.kind==="wavy"},
+  {key:"bedAlign", label:"Bed align (minZ→0)", ui:"toggle"},
+];
+
+const SCHEMA_SLICER_V2 = [
+  { kind:"group", title:"Input & Mode", rows:[
+    { items:[
+      {key:"bedAlign", label:"Bed align mesh", ui:"toggle", default:true},
+      {key:"mode", label:"Mode", ui:"select", options:[
+        ["planar","Planar (layers + shells + infill + top/bottom)"],
+        ["surface","Surface raster (non-planar)"]
+      ], default:"planar"},
+    ]},
+    { items:[
+      {key:"originMode", label:"Origin", ui:"select", options:[
+        ["from_printer","Use Printer origin"],
+        ["center","Center on bed"],
+        ["lowerleft","Lower-left on bed"]
+      ], default:"from_printer"},
+      {key:"scale", label:"Scale", ui:"number", min:0.01, max:100, step:0.01, default:1},
+    ]},
+    { items:[
+      {key:"rotZ", label:"Rotate Z°", ui:"number", min:-180, max:180, step:1, default:0},
+      {key:"zOffset", label:"Z offset", ui:"number", min:-50, max:50, step:0.01, default:0},
+    ]},
+  ], note:"<span class='hint'>This is a lightweight slicer inspired by Orca-style controls. Many settings affect output now (shells/infill/top/bottom/speeds/flows/skirt/brim). Some advanced items are UI-ready but not fully simulated yet.</span>" },
+
+  /* ---------------- Planar ---------------- */
+  { kind:"group", title:"Quality", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"layerHeight", label:"Layer height", ui:"number", min:0.05, max:1.2, step:0.01, default:0.2},
+      {key:"firstLayerHeight", label:"First layer height", ui:"number", min:0.05, max:1.2, step:0.01, default:0.24},
+    ]},
+    { items:[
+      {key:"lineWidth", label:"Line width", ui:"number", min:0.2, max:1.2, step:0.01, default:0.45},
+      {key:"firstLayerLineWidth", label:"First layer line width", ui:"number", min:0.2, max:1.6, step:0.01, default:0.50},
+    ]},
+    { items:[
+      {key:"elephantFootComp", label:"Elephant foot comp", ui:"number", min:0, max:1.0, step:0.01, default:0.0},
+      {key:"detectThinWalls", label:"Detect thin walls (UI)", ui:"toggle", default:false},
+    ]},
+  ]},
+
+  { kind:"group", title:"Shells (Walls)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"perimeters", label:"Perimeters", ui:"number", min:0, max:12, step:1, default:2},
+      {key:"spiralVase", label:"Spiral vase (UI)", ui:"toggle", default:false},
+    ]},
+    { items:[
+      {key:"seamMode", label:"Seam (UI)", ui:"select", options:[
+        ["nearest","Nearest"],["rear","Rear"],["random","Random"],["aligned","Aligned (UI)"]
+      ], default:"nearest"},
+      {key:"wallOrdering", label:"Wall ordering (UI)", ui:"select", options:[
+        ["inner>outer","Inner → Outer"],["outer>inner","Outer → Inner (UI)"]
+      ], default:"inner>outer"},
+    ]},
+    { items:[
+      {key:"gapFill", label:"Gap fill (UI)", ui:"toggle", default:false},
+      {key:"wallOverlap", label:"Infill overlap % (UI)", ui:"number", min:0, max:50, step:1, default:15},
+    ]},
+  ]},
+
+  { kind:"group", title:"Infill", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"infillPct", label:"Infill %", ui:"number", min:0, max:100, step:1, default:15},
+      {key:"infillPattern", label:"Pattern", ui:"select", options:[
+        ["lines","Lines"],["zigzag","Zigzag"],["rectilinear","Rectilinear"],
+        ["cross","Cross"],["grid","Grid"],
+        ["triangles","Triangles"],["octagrid","Octagrid"],
+        ["honeycomb","Honeycomb (approx)"],
+        ["waves","Waves"],["gyroid2d","Gyroid-like (2D)"],
+        ["cubic","Cubic (alt)"],
+        ["concentric","Concentric"]
+      ], default:"grid"},
+    ]},
+    { items:[
+      {key:"infillAngle", label:"Angle°", ui:"number", min:0, max:180, step:1, default:45},
+      {key:"serpentine", label:"Serpentine", ui:"toggle", default:true},
+    ]},
+    { items:[
+      {key:"brickLayer", label:"Brick-layer (phase shift)", ui:"toggle", default:false},
+      {key:"infillLineWidth", label:"Infill line width (UI)", ui:"number", min:0.2, max:2.0, step:0.01, default:0},
+    ]},
+  ]},
+
+  { kind:"group", title:"Top & Bottom (Skins)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"topLayers", label:"Top layers", ui:"number", min:0, max:60, step:1, default:4},
+      {key:"bottomLayers", label:"Bottom layers", ui:"number", min:0, max:60, step:1, default:4},
+    ]},
+    { items:[
+      {key:"solidPattern", label:"Skin pattern", ui:"select", options:[
+        ["","(same as infill)"],["lines","Lines"],["zigzag","Zigzag"],["grid","Grid"],["concentric","Concentric"],
+        ["waves","Waves"],["gyroid2d","Gyroid-like (2D)"]
+      ], default:""},
+      {key:"ironing", label:"Ironing (UI)", ui:"toggle", default:false},
+    ]},
+    { items:[
+      {key:"skinOverlap", label:"Skin overlap % (UI)", ui:"number", min:0, max:50, step:1, default:15},
+      {key:"monotonic", label:"Monotonic (UI)", ui:"toggle", default:false},
+    ]},
+  ]},
+
+  { kind:"group", title:"Skirt / Brim", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"skirtLines", label:"Skirt lines", ui:"number", min:0, max:20, step:1, default:0},
+      {key:"skirtDistance", label:"Skirt distance", ui:"number", min:0, max:50, step:0.5, default:6},
+    ]},
+    { items:[
+      {key:"brimWidth", label:"Brim width", ui:"number", min:0, max:50, step:0.5, default:0},
+      {key:"brimLines", label:"Brim lines (UI)", ui:"number", min:0, max:50, step:1, default:0},
+    ]},
+  ], note:"Skirt/Brim are generated as simple offset rings on the first layer (approximation)." },
+
+  { kind:"group", title:"Speeds & Flow", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"firstLayerSpeed", label:"First layer speed", ui:"number", min:60, max:12000, step:10, default:900},
+      {key:"travelSpeed", label:"Travel speed", ui:"number", min:300, max:30000, step:10, default:6000},
+    ]},
+    { items:[
+      {key:"wallSpeed", label:"Wall speed", ui:"number", min:60, max:30000, step:10, default:1800},
+      {key:"infillSpeed", label:"Infill speed", ui:"number", min:60, max:30000, step:10, default:2400},
+    ]},
+    { items:[
+      {key:"topSpeed", label:"Top speed", ui:"number", min:60, max:30000, step:10, default:1500},
+      {key:"bottomSpeed", label:"Bottom speed", ui:"number", min:60, max:30000, step:10, default:1200},
+    ]},
+    { items:[
+      {key:"wallFlow", label:"Wall flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+      {key:"infillFlow", label:"Infill flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+    ]},
+    { items:[
+      {key:"topFlow", label:"Top flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+      {key:"bottomFlow", label:"Bottom flow", ui:"number", min:0.1, max:2.0, step:0.01, default:1.0},
+    ]},
+  ], note:"These map into G-code defaults by <b>role</b> when no Rules node overrides speed/flow." },
+
+  { kind:"group", title:"Retraction & Travel", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"retract", label:"Retract length", ui:"number", min:0, max:20, step:0.01, default:0.8},
+      {key:"retractSpeed", label:"Retract speed", ui:"number", min:60, max:30000, step:10, default:1800},
+    ]},
+    { items:[
+      {key:"retractMinTravel", label:"Min travel for retract", ui:"number", min:0, max:50, step:0.1, default:1.0},
+      {key:"zHop", label:"Z hop", ui:"number", min:0, max:10, step:0.01, default:0},
+    ]},
+    { items:[
+      {key:"wipe", label:"Wipe (UI)", ui:"toggle", default:false},
+      {key:"coast", label:"Coast (UI)", ui:"toggle", default:false},
+    ]},
+  ], note:"Retract/Z-hop are applied on travels in exported G-code (simple implementation)." },
+
+  { kind:"group", title:"Cooling (UI)", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"fanFirstLayer", label:"Fan first layer %", ui:"number", min:0, max:100, step:1, default:0},
+      {key:"fanOtherLayers", label:"Fan other layers %", ui:"number", min:0, max:100, step:1, default:100},
+    ]},
+    { items:[
+      {key:"minLayerTime", label:"Min layer time (UI)", ui:"number", min:0, max:120, step:1, default:0},
+      {key:"slowDownBelow", label:"Slow down below (UI)", ui:"number", min:0, max:60, step:1, default:0},
+    ]},
+  ]},
+
+  { kind:"group", title:"Advanced limits", when:"d.mode==='planar'", rows:[
+    { items:[
+      {key:"maxLayers", label:"Max layers (limit)", ui:"number", min:0, max:99999, step:1, default:0},
+      {key:"maxSegs", label:"Max segments/layer (limit)", ui:"number", min:0, max:9999999, step:100, default:0},
+    ]},
+  ]},
+
+  /* ---------------- Surface raster (non-planar) ---------------- */
+  { kind:"group", title:"Surface raster", when:"d.mode==='surface'", rows:[
+    { items:[
+      {key:"spacing", label:"Raster spacing", ui:"number", min:0.1, max:10, step:0.05, default:1.0},
+      {key:"step", label:"Sample step", ui:"number", min:0.05, max:5, step:0.05, default:0.6},
+    ]},
+    { items:[
+      {key:"angleDeg", label:"Angle°", ui:"number", min:-180, max:180, step:1, default:0},
+      {key:"margin", label:"Margin", ui:"number", min:0, max:50, step:0.1, default:0},
+    ]},
+    { items:[
+      {key:"surfaceSerp", label:"Serpentine raster", ui:"toggle", default:true},
+      {key:"cellSize", label:"Index cell (auto=0)", ui:"number", min:0, max:200, step:0.1, default:0},
+      {key:"maxPts", label:"Max points (limit)", ui:"number", min:0, max:2000000, step:1000, default:0},
+    ]},
+  ]},
+];
+
+// Preserve old behavior as legacy nodes (hidden from library, but still loadable)
+NODE_DEFS["Mesh Primitive (Legacy)"] = NODE_DEFS["Mesh Primitive"];
+NODE_DEFS["Mesh Primitive (Legacy)"].title = "Mesh Primitive (Legacy)";
+NODE_DEFS["Mesh Primitive (Legacy)"].hidden = true;
+
+// Hide old Mesh Import from the library (still works when loading older graphs)
+NODE_DEFS["Mesh Import"].title = "Mesh Import (Legacy)";
+NODE_DEFS["Mesh Import"].hidden = true;
+
+// ---- Import Mesh (new) ----
+NODE_DEFS["Import Mesh"] = {
+  title:"Import Mesh",
+  defaultW:360,
+  defaultH:520,
+  tag:"mesh",
+  desc:"Import an STL with an in-node preview. Outputs mesh + optional auto-path (surface raster or quick planar). Use Slicer for full control.",
+  inputs: [],
+  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
+  initData: ()=>({
+    bedAlign:true,
+    centerXY:true,
+    scale:1,
+    rxDeg:0, ryDeg:0, rzDeg:0,
+    tx:0, ty:0, tz:0,
+    b64:"",
+    pathMode:"surface",
+    spacing:1.0, step:0.6, angleDeg:0, margin:0, zOffset:0, surfaceSerp:true, maxPts:0,
+    q_layerHeight:0.24, q_lineWidth:0.45, q_perimeters:2, q_infillPct:18, q_infillPattern:"grid", q_infillAngle:45, q_topLayers:4, q_bottomLayers:4, q_serpentine:true, q_brickLayer:false, q_solidPattern:""
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+
+    const file = document.createElement("input");
+    file.type="file";
+    file.accept=".stl,model/stl,application/sla";
+    file.style.width="100%";
+    for(const ev of ["pointerdown","mousedown","click"]){ file.addEventListener(ev, e=>e.stopPropagation()); }
+    file.addEventListener("change", async ()=>{
+      const f = file.files && file.files[0];
+      if(!f) return;
+      try{
+        const buf = await f.arrayBuffer();
+        d.b64 = b64FromArrayBuffer(buf);
+        const mesh = parseSTL(buf);
+        meshRuntimeCache.set(node.id, {mesh});
+        toast("STL loaded");
+        markDirtyAuto();
+        saveState();
+        refreshNodeContent(node.id);
+      }catch(e){ console.warn(e); toast(e.message||String(e)); }
+    });
+    mount.appendChild(file);
+
+    const box = document.createElement("div");
+    box.className="miniBox";
+    const canvas = document.createElement("canvas");
+    canvas.width=520; canvas.height=260;
+    box.appendChild(canvas);
+    mount.appendChild(box);
+
+    const form = document.createElement("div");
+    renderSchema(SCHEMA_IMPORT_MESH_V2, node, form);
+    mount.appendChild(form);
+
+    const token = (node._meshPrevTok = (node._meshPrevTok||0)+1);
+    function loop(t){
+      if(node._meshPrevTok !== token) return;
+      const runtime = meshRuntimeCache.get(node.id);
+      let mesh = runtime?.mesh || null;
+      if(!mesh && d.b64){
+        try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }catch(_){ mesh=null; }
+        if(mesh) meshRuntimeCache.set(node.id, {mesh});
+      }
+      if(mesh){
+        let m = mesh;
+        m = centerMesh(m, d.centerXY, false);
+        m = applyMeshTransform(m, d);
+        if(d.bedAlign) m = bedAlignMesh(m);
+        drawWireframe2D(canvas, m.tris, m.bounds, t*0.001, null);
+      }else{
+        const ctx=canvas.getContext("2d");
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle="rgba(255,255,255,0.55)";
+        ctx.font="12px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillText("Choose an STL to preview", 14, 22);
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const runtime = meshRuntimeCache.get(node.id);
+    let mesh = runtime?.mesh || null;
+    if(!mesh && d.b64){
+      try{ mesh = parseSTL(arrayBufferFromB64(d.b64)); }catch(_){ mesh=null; }
+      if(mesh) meshRuntimeCache.set(node.id, {mesh});
+    }
+    if(!mesh) return { mesh:null };
+    let m = mesh;
+    m = centerMesh(m, d.centerXY, false);
+    m = applyMeshTransform(m, d);
+    if(d.bedAlign) m = bedAlignMesh(m);
+    
+// Optional auto-path
+let path = [];
+const pm = String(d.pathMode||"none");
+if(pm==="surface"){
+  path = surfaceRasterPath(m, { spacing:d.spacing, step:d.step, angleDeg:d.angleDeg, margin:d.margin, zOffset:d.zOffset, serpentine:!!d.surfaceSerp }, 0.2, (d.maxPts||0)? d.maxPts : null);
+}else if(pm==="planar"){
+  path = sliceMeshPlanar(m, { layerHeight:d.q_layerHeight, lineWidth:d.q_lineWidth, perimeters:d.q_perimeters, infillPct:d.q_infillPct, infillPattern:d.q_infillPattern, infillAngle:d.q_infillAngle, topLayers:d.q_topLayers, bottomLayers:d.q_bottomLayers, serpentine:!!d.q_serpentine, brickLayer:!!d.q_brickLayer, solidPattern:(d.q_solidPattern||"") });
+}
+annotatePathHints(path, d);
+    return { mesh:m, path };
+
+  }
+};
+
+// ---- Mesh Primitive (new) ----
+NODE_DEFS["Mesh Primitive"] = {
+  title:"Mesh Primitive",
+  defaultW:360,
+  defaultH:520,
+  tag:"mesh",
+  desc:"Procedural mesh generator with in-node preview. Outputs mesh + optional auto-path (surface raster or quick planar). Use Slicer for full control.",
+  inputs: [],
+  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
+  initData: ()=>({
+    kind:"cube",
+    size:120,
+    height:40,
+    seg:40,
+    waveAmp:8,
+    waveFreq:3,
+    bedAlign:true,
+    previewMode:"wireframe"
+  }),
+  render:(node, mount)=>{
+    const d=node.data;
+    mount.innerHTML="";
+
+// Top selectors (primitive + preview style)
+const top = document.createElement("div");
+top.className = "miniTopRow";
+
+const kindSel = document.createElement("select");
+kindSel.innerHTML = `
+  <option value="cube">Cube</option>
+  <option value="dome">Dome</option>
+  <option value="wavy">Wavy Plane</option>
+`;
+kindSel.value = d.kind || "cube";
+for(const ev of ["pointerdown","mousedown","click"]){ kindSel.addEventListener(ev, e=>e.stopPropagation()); }
+kindSel.addEventListener("change", ()=>{
+  d.kind = kindSel.value;
+  markDirtyAuto();
+  saveState();
+  refreshNodeContent(node.id);
+});
+top.appendChild(kindSel);
+
+const styleSel = document.createElement("select");
+styleSel.innerHTML = `
+  <option value="wireframe">Wireframe</option>
+  <option value="solid">Solid</option>
+  <option value="shaded">Shaded</option>
+  <option value="points">Points</option>
+`;
+styleSel.value = d.previewMode || "wireframe";
+for(const ev of ["pointerdown","mousedown","click"]){ styleSel.addEventListener(ev, e=>e.stopPropagation()); }
+styleSel.addEventListener("change", ()=>{
+  d.previewMode = styleSel.value;
+  markDirtyAuto();
+  saveState();
+});
+top.appendChild(styleSel);
+
+mount.appendChild(top);
+
+const box = document.createElement("div");
+box.className="miniBox r23";
+const canvas = document.createElement("canvas");
+canvas.width=480; canvas.height=720; // 2:3 base ratio
+box.appendChild(canvas);
+mount.appendChild(box);
+
+// Make canvas resolution match element size for crisp preview
+try{
+  if(node._ro){ node._ro.disconnect(); node._ro=null; }
+  node._ro = new ResizeObserver(()=>{
+    const r = box.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const ww = Math.max(2, Math.floor(r.width * dpr));
+    const hh = Math.max(2, Math.floor(r.height * dpr));
+    if(canvas.width!==ww || canvas.height!==hh){
+      canvas.width = ww; canvas.height = hh;
+    }
+  });
+  node._ro.observe(box);
+}catch(_){}
+
+const form = document.createElement("div");
+renderSchema(SCHEMA_MESH_PRIMITIVE_V2, node, form);
+mount.appendChild(form);
+    const token = (node._meshPrevTok = (node._meshPrevTok||0)+1);
+    function loop(t){
+      if(node._meshPrevTok !== token) return;
+      const legacy = NODE_DEFS["Mesh Primitive (Legacy)"];
+      const tmp = { id: node.id, type:"Mesh Primitive (Legacy)", data: {...d, surfacePathEnabled:false, pathMode:"surface"} };
+      let out=null;
+      try{ out = legacy.evaluate(tmp, {base:{layerHeight:0.2}}); }catch(_){ out=null; }
+      const mesh = out?.mesh || null;
+      if(mesh){
+        let m = mesh;
+        if(d.bedAlign) m = bedAlignMesh(m);
+        drawMeshPreview2D(canvas, m.tris, m.bounds, t*0.001, null, d.previewMode||"wireframe");
+      }else{
+        const ctx=canvas.getContext("2d");
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const legacy = NODE_DEFS["Mesh Primitive (Legacy)"];
+    const tmp = { id: node.id, type:"Mesh Primitive (Legacy)", data: {...d, surfacePathEnabled:false, pathMode:"surface"} };
+    const out = legacy.evaluate(tmp, ctx);
+    let mesh = out?.mesh || null;
+    if(mesh && d.bedAlign) mesh = bedAlignMesh(mesh);
+    return { mesh };
+  }
+};
+
+// ---- Slicer (new) ----
+NODE_DEFS["Slicer"] = {
+  title:"Slicer",
+  defaultW:360,
+  defaultH:460,
+  tag:"path",
+  desc:"Slices a mesh into toolpaths. Inputs mesh → outputs mesh + path.",
+  inputs: [{name:"mesh", type:"mesh"}],
+  outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
+  initData: ()=>({
+  bedAlign:true, mode:"planar", originMode:"from_printer", scale:1, rotZ:0, zOffset:0,
+  layerHeight:0.2, firstLayerHeight:0.24, lineWidth:0.45, firstLayerLineWidth:0.50,
+  perimeters:2, topLayers:4, bottomLayers:4,
+  infillPct:15, infillPattern:"grid", infillAngle:45, serpentine:true, brickLayer:false, solidPattern:"",
+  skirtLines:0, skirtDistance:6, brimWidth:0, brimLines:0,
+  firstLayerSpeed:900, travelSpeed:6000, wallSpeed:1800, infillSpeed:2400, topSpeed:1500, bottomSpeed:1200,
+  wallFlow:1.0, infillFlow:1.0, topFlow:1.0, bottomFlow:1.0,
+  retract:0.8, retractSpeed:1800, retractMinTravel:1.0, zHop:0,
+  fanFirstLayer:0, fanOtherLayers:100,
+  spacing:1.0, step:0.6, angleDeg:0, margin:0, surfaceSerp:true, maxPts:0
+}),
+  render:(node, mount)=>{
+    mount.innerHTML="";
+    const hint = document.createElement("div");
+    hint.className="hint";
+    hint.innerHTML = `Workflow: <b>(mesh)</b> → <b>Slicer</b> → <b>(path)</b> → Export. Connect a mesh and run the graph.`;
+    mount.appendChild(hint);
+    const form = document.createElement("div");
+    renderSchema(SCHEMA_SLICER_V2, node, form);
+    mount.appendChild(form);
+  },
+  evaluate:(node, ctx)=>{
+    const d=node.data;
+    const inp = ctx.getInput(node.id, "mesh");
+    let mesh = (inp?.mesh || inp || null);
+    if(!mesh || !mesh.tris) return { mesh:null, path:[] };
+
+    let m = mesh;
+    if(d.bedAlign) m = bedAlignMesh(m);
+
+    let path = [];
+    if(d.mode === "planar"){
+      path = sliceMeshPlanar(m, {
+        layerHeight: d.layerHeight,
+        lineWidth: d.lineWidth,
+        perimeters: d.perimeters,
+        infillPct: d.infillPct,
+        infillAngle: d.infillAngle,
+        infillPattern: d.infillPattern,
+        topLayers: d.topLayers,
+        bottomLayers: d.bottomLayers,
+        serpentine: d.serpentine,
+        maxLayers: 900,
+        maxSegs: 260000,
+        roleOrder: "bottom,walls,infill,top"
+      });
+    }else{
+      
+// Build/refresh a coarse spatial index for projection (cell size derived from spacing)
+try{
+  const cs = Math.max(2, Number(d.cellSize||0) || (Number(d.spacing||1.0) * 2.0));
+  if(!m.index || m.index.cs !== cs) buildMeshIndex(m, cs);
+}catch(_){}
+path = surfaceRasterPath(m, {
+  spacing:d.spacing,
+  step:d.step,
+  angleDeg:d.angleDeg,
+  margin:d.margin,
+  zOffset:d.zOffset,
+  serpentine: !!d.surfaceSerp
+}, (ctx.base?.layerHeight||0.2), (d.maxPts||0)? d.maxPts : null);
+annotatePathHints(path, d);
+}
+    return { mesh:m, path };
+  }
+};
+
+// --- UI: Studio View (Preview + Output dock) ---
+NODE_DEFS["Studio View"] = {
+  title:"Studio View",
+  tag:"ui",
+  desc:"Docked Preview & Output as a node so the canvas can use full width.",
+  inputs: [],
+  outputs: [],
+  defaultW: 560,
+  defaultH: 780,
+  initData: ()=>({}),
+  render:(node, mount)=>{
+    initStudioDock();
+    mount.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "studioDock";
+    mount.appendChild(wrap);
+
+    if(studioDock.head) wrap.appendChild(studioDock.head);
+    if(studioDock.body) wrap.appendChild(studioDock.body);
+    else{
+      const h = document.createElement("div");
+      h.className = "hint";
+      h.textContent = "Preview dock missing. (It should be created automatically.)";
+      wrap.appendChild(h);
+    }
+
+    // Ensure preview controls remain interactive inside the node
+    stopGraphGestures(wrap.querySelector("#glPreview"));
+    stopGraphGestures(wrap.querySelector("#mvPreview"));
+    stopGraphGestures(wrap.querySelector("#previewControls"));
+    stopGraphGestures(wrap.querySelector("#btnCopy"));
+    stopGraphGestures(wrap.querySelector("#btnFitPreview"));
+    stopGraphGestures(wrap.querySelector("#btnClearOut"));
+
+    // Nudge a refresh so the GL canvas matches its new host size
+    try{ schedulePreviewUpdate(); }catch(_){}
+  },
+  // make it big by default
+  defaultSize: { w: 560, h: 780 }
+};
+
+
+
 function demoFeaturePaintOptimize(){
   state = defaultState();
   const prim = addNode("Mesh Primitive", 100, 120);
@@ -4149,7 +9575,7 @@ document.addEventListener("mousedown", (e)=>{
   }
 });
 
-window./* ---------------------------
+/* ---------------------------
    Keyboard
 ---------------------------- */
 window.addEventListener("keydown", (e)=>{
@@ -4275,66 +9701,7 @@ function stopGraphGestures(el){
   }
 }
 
-Object.assign(nodeRegistry.api, {
-  annotatePathHints,
-  applyMeshTransform,
-  arrayBufferFromB64,
-  b64FromArrayBuffer,
-  bedAlignMesh,
-  buildFromImage,
-  buildGcodeWithRules,
-  buildMeshIndex,
-  centerMesh,
-  clamp,
-  compileExpr,
-  drawMeshPreview2D,
-  drawWireframe2D,
-  divider,
-  dividerTiny,
-  downloadText,
-  elInput,
-  elNumber,
-  elSelect,
-  elTextarea,
-  elToggle,
-  escapeHTML,
-  field,
-  fmt,
-  genEquation,
-  genFromSVG,
-  genPolar,
-  genSpiralVase,
-  grid2,
-  inferLayer,
-  markDirtyAuto,
-  meshRuntimeCache,
-  meshTopZ,
-  parseSTL,
-  pickLayerHeight,
-  refreshNodeContent,
-  renderSchema,
-  rerenderNode,
-  rad,
-  safeName,
-  saveState,
-  schedulePreviewUpdate,
-  sliceMeshPlanar,
-  stopGraphGestures,
-  studioDock,
-  surfaceRasterPath,
-  toast,
-  SCHEMA_IMPORT_MESH_V2,
-  SCHEMA_MESH_PRIMITIVE,
-  SCHEMA_MESH_PRIMITIVE_V2,
-  SCHEMA_SLICER_V2
-});
-
-async function startApp(){
-  await loadNodes();
-  boot();
-}
-
-startApp();
+boot();
 
 /* Redraw links on resize, and resize preview */
 window.addEventListener("resize", ()=>{
