@@ -87,20 +87,6 @@ const NODE_MODULES = [
   "/nodes/z-warp.js"
 ];
 
-async function loadNodesFromList(){
-  const failures = [];
-  for(const modulePath of NODE_MODULES){
-    try{
-      const mod = await import(modulePath);
-      registerNodeModule(mod, modulePath);
-    }catch(err){
-      failures.push(modulePath);
-      console.warn("Failed to load node module", modulePath, err);
-    }
-  }
-  return failures;
-}
-
 const toastEl = document.getElementById("toast");
 function toast(msg, ms=1400){
   toastEl.textContent = msg;
@@ -214,66 +200,27 @@ const outPill = document.getElementById("outPill");
 async function loadNodes(){
   if(nodeRegistry.loaded) return NODE_DEFS;
   setStatus("Loading nodes…");
-  let entries = [];
-  try{
-    const res = await fetch("/api/nodes");
-    if(!res.ok) throw new Error(`Node manager: ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    entries = Array.isArray(data.nodes) ? data.nodes : [];
-  }catch(err){
-    console.warn("Node manager error", err);
-    toast("Node manager error: " + (err.message || String(err)));
-  }
-
   const failures = [];
-  await Promise.all(entries.map(async (entry)=>{
+  await Promise.all(NODE_MODULES.map(async (modulePath)=>{
     try{
-      const mod = await import(entry.module);
-      registerNodeModule(mod, entry.module);
+      const mod = await import(modulePath);
+      registerNodeModule(mod, modulePath);
     }catch(err){
-      failures.push(entry?.name || entry?.module || "unknown");
-      console.warn("Failed to load node", entry, err);
+      failures.push(modulePath);
+      console.warn("Failed to load node module", modulePath, err);
     }
   }));
-
-  const loadManifest = async (cacheBust = "")=>{
-    const suffix = cacheBust ? `?t=${cacheBust}` : "";
-    const manifest = await import(`/nodes/index.js${suffix}`);
-    if(typeof manifest.registerAllNodes === "function"){
-      await manifest.registerAllNodes();
-      return;
-    }
-    if(typeof manifest.default === "function"){
-      await manifest.default();
-    }
-  };
-
-  try{
-    await loadManifest("");
-    if(Object.keys(NODE_DEFS).length === 0){
-      await loadManifest(Date.now());
-    }
-  }catch(err){
-    console.warn("Fallback node manifest error", err);
-    if(!entries.length || Object.keys(NODE_DEFS).length === 0){
-      toast("Fallback node loader failed: " + (err.message || String(err)));
-    }
-  }
-
-  if(Object.keys(NODE_DEFS).length === 0){
-    const fallbackFailures = await loadNodesFromList();
-    if(fallbackFailures.length){
-      console.warn("Fallback direct module load failures", fallbackFailures);
-    }
-  }
-
-  if(failures.length){
-    toast(`Failed to load ${failures.length} node(s). Check console for details.`);
-  }
 
   const total = Object.keys(NODE_DEFS).length;
   nodeRegistry.loaded = total > 0;
   setStatus(total ? `Nodes: ${total}` : "Nodes: 0");
+  if(!total){
+    toast("No nodes were loaded. Cannot start the app.", 600000);
+    throw new Error("Node loader returned zero nodes.");
+  }
+  if(failures.length){
+    toast(`Failed to load ${failures.length} node(s). Check console for details.`);
+  }
   return NODE_DEFS;
 }
 
@@ -9497,7 +9444,16 @@ function stopGraphGestures(el){
   }
 }
 
-boot();
+async function startApp(){
+  try{
+    await loadNodes();
+  }catch(err){
+    console.warn(err);
+    return;
+  }
+  boot();
+}
+startApp();
 
 /* Redraw links on resize, and resize preview */
 window.addEventListener("resize", ()=>{
