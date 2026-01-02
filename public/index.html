@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>G-code Studio — Node Graph v72</title>
 <link rel="stylesheet" href="/styles.css" />
-
-<link rel="stylesheet" href="/styles.css" />
-
 </head>
 <body data-theme="dark">
   <div class="topbar">
@@ -16,15 +13,12 @@
       <div class="stack">
         <div class="title">G-code Studio</div>
         <div class="subtitle">Procedural node graph • SVG → toolpath • rules → G-code</div>
-        <div class="subtitle">Procedural node graph • SVG → toolpath • rules → G-code</div>
       </div>
     </div>
 
     <div class="actions">
       <span class="pill" id="statusPill">Booting…</span>
       <span class="pill" id="zoomPill">Zoom 100%</span>
-      <span class="pill" id="debugPill" style="display:none;">Debug</span>
-      <span class="pill" id="debugPill" style="display:none;">Debug</span>
 <div class="dropdown" id="demoDropdown">
   <button class="btn" id="btnDemo" title="Load a demo graph">Load demo ▾</button>
   <div class="menu" id="demoMenu" role="menu" aria-label="Demos"></div>
@@ -264,94 +258,6 @@
         </div>
       </div>
 
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Debug mode</div>
-          <div class="npDesc">Show node IDs and link counts for troubleshooting.</div>
-        </div>
-        <div class="npBadges">
-          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="setDebugMode" />
-            <span>ON</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Connection style</div>
-          <div class="npDesc">Choose how node links are rendered.</div>
-        </div>
-        <div class="npBadges">
-          <select id="setConnectionStyle" class="npSearch" style="width:160px; padding:8px 10px;">
-            <option value="curved">Curved</option>
-            <option value="straight">Straight</option>
-            <option value="orthogonal">Orthogonal</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Keyboard shortcuts</div>
-          <div class="npDesc">Quick reference for core graph actions.</div>
-        </div>
-      </div>
-      <ul class="shortcutList">
-        <li class="shortcutItem"><span>Open node picker</span><span class="kbd">Space</span></li>
-        <li class="shortcutItem"><span>Pan canvas</span><span class="kbd">Space + Drag</span></li>
-        <li class="shortcutItem"><span>Pan canvas</span><span class="kbd">Middle Drag</span></li>
-        <li class="shortcutItem"><span>Zoom</span><span class="kbd">Wheel</span></li>
-        <li class="shortcutItem"><span>Run graph</span><span class="kbd">G</span></li>
-        <li class="shortcutItem"><span>Delete selected node</span><span class="kbd">Del</span></li>
-        <li class="shortcutItem"><span>Close dialogs</span><span class="kbd">Esc</span></li>
-      </ul>
-
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Debug mode</div>
-          <div class="npDesc">Show node IDs and link counts for troubleshooting.</div>
-        </div>
-        <div class="npBadges">
-          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="setDebugMode" />
-            <span>ON</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Connection style</div>
-          <div class="npDesc">Choose how node links are rendered.</div>
-        </div>
-        <div class="npBadges">
-          <select id="setConnectionStyle" class="npSearch" style="width:160px; padding:8px 10px;">
-            <option value="curved">Curved</option>
-            <option value="straight">Straight</option>
-            <option value="orthogonal">Orthogonal</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-      <div class="npItem" style="cursor:default;">
-        <div class="npMeta">
-          <div class="npTitle">Keyboard shortcuts</div>
-          <div class="npDesc">Quick reference for core graph actions.</div>
-        </div>
-      </div>
-      <ul class="shortcutList">
-        <li class="shortcutItem"><span>Open node picker</span><span class="kbd">Space</span></li>
-        <li class="shortcutItem"><span>Pan canvas</span><span class="kbd">Space + Drag</span></li>
-        <li class="shortcutItem"><span>Pan canvas</span><span class="kbd">Middle Drag</span></li>
-        <li class="shortcutItem"><span>Zoom</span><span class="kbd">Wheel</span></li>
-        <li class="shortcutItem"><span>Run graph</span><span class="kbd">G</span></li>
-        <li class="shortcutItem"><span>Delete selected node</span><span class="kbd">Del</span></li>
-        <li class="shortcutItem"><span>Close dialogs</span><span class="kbd">Esc</span></li>
-      </ul>
-
       <div class="divider"></div>
       <div class="hint">
         Tip: Press <span class="kbd">Space</span> to add nodes, <span class="kbd">Enter</span> to place, <span class="kbd">Esc</span> to cancel.
@@ -398,283 +304,110 @@ const downloadText = (filename, text)=>{
   URL.revokeObjectURL(url);
 };
 
-class ToastManager{
-  constructor(el){
-    this.el = el;
-    this.timer = null;
-  }
-
-  normalizeOptions(options){
-    if(typeof options === "number"){
-      return { ms: options, type: "info" };
-    }
-    if(typeof options === "string"){
-      return { ms: 1400, type: options };
-    }
-    if(options && typeof options === "object"){
-      return {
-        ms: typeof options.ms === "number" ? options.ms : 1400,
-        type: options.type || "info"
-      };
-    }
-    return { ms: 1400, type: "info" };
-  }
-
-  show(msg, options){
-    if(!this.el) return;
-    const { ms, type } = this.normalizeOptions(options);
-    this.el.textContent = msg;
-    this.el.dataset.type = type;
-    this.el.classList.add("show");
-    clearTimeout(this.timer);
-    this.timer = setTimeout(()=>this.el.classList.remove("show"), ms);
-  }
-class ToastManager{
-  constructor(el){
-    this.el = el;
-    this.timer = null;
-  }
-
-  normalizeOptions(options){
-    if(typeof options === "number"){
-      return { ms: options, type: "info" };
-    }
-    if(typeof options === "string"){
-      return { ms: 1400, type: options };
-    }
-    if(options && typeof options === "object"){
-      return {
-        ms: typeof options.ms === "number" ? options.ms : 1400,
-        type: options.type || "info"
-      };
-    }
-    return { ms: 1400, type: "info" };
-  }
-
-  show(msg, options){
-    if(!this.el) return;
-    const { ms, type } = this.normalizeOptions(options);
-    this.el.textContent = msg;
-    this.el.dataset.type = type;
-    this.el.classList.add("show");
-    clearTimeout(this.timer);
-    this.timer = setTimeout(()=>this.el.classList.remove("show"), ms);
-  }
-
-  attachGlobalHandlers(){
-    window.addEventListener("error", (ev)=>{
-      try{
-        const msg = (ev && (ev.message || ev.error?.message)) || "Script error";
-        console.warn(ev);
-        this.show(msg);
-      }catch(_){}
-    });
-    window.addEventListener("unhandledrejection", (ev)=>{
-      try{
-        const msg = (ev && (ev.reason?.message || String(ev.reason))) || "Unhandled rejection";
-        console.warn(ev);
-        this.show(msg);
-      }catch(_){}
-    });
-  }
+const toastEl = document.getElementById("toast");
+function toast(msg, ms=1400){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(()=>toastEl.classList.remove("show"), ms);
 }
 
-class CompatMenu{
-  constructor({toast}){
-    this.toast = toast;
-    this.el = null;
-    this.boundClose = (e)=>{
-      if(!this.el) return;
-      if(this.el.style.display==="none") return;
-      if(this.el.contains(e.target)) return;
-      this.hide();
-    };
-  }
+window.addEventListener("error", (ev)=>{
+  try{
+    const msg = (ev && (ev.message || ev.error?.message)) || "Script error";
+    console.warn(ev);
+    toast(msg);
+  }catch(_){}
+});
+window.addEventListener("unhandledrejection", (ev)=>{
+  try{
+    const msg = (ev && (ev.reason?.message || String(ev.reason))) || "Unhandled rejection";
+    console.warn(ev);
+    toast(msg);
+  }catch(_){}
+});
 
-  ensure(){
-    if(this.el) return this.el;
-    this.el = document.createElement("div");
-    this.el.className = "compatMenu";
-    this.el.innerHTML = `<div class="title">Create compatible node…</div><div class="list"></div>`;
-    document.body.appendChild(this.el);
-  attachGlobalHandlers(){
-    window.addEventListener("error", (ev)=>{
-      try{
-        const msg = (ev && (ev.message || ev.error?.message)) || "Script error";
-        console.warn(ev);
-        this.show(msg);
-      }catch(_){}
-    });
-    window.addEventListener("unhandledrejection", (ev)=>{
-      try{
-        const msg = (ev && (ev.reason?.message || String(ev.reason))) || "Unhandled rejection";
-        console.warn(ev);
-        this.show(msg);
-      }catch(_){}
-    });
-  }
+
+let compatMenuEl = null;
+
+function ensureCompatMenu(){
+  if(compatMenuEl) return compatMenuEl;
+  compatMenuEl = document.createElement("div");
+  compatMenuEl.className = "compatMenu";
+  compatMenuEl.innerHTML = `<div class="title">Create compatible node…</div><div class="list"></div>`;
+  document.body.appendChild(compatMenuEl);
+
+  window.addEventListener("pointerdown", (e)=>{
+    if(!compatMenuEl) return;
+    if(compatMenuEl.style.display==="none") return;
+    if(compatMenuEl.contains(e.target)) return;
+    hideCompatMenu();
+  }, {capture:true});
+
+  return compatMenuEl;
 }
 
-class CompatMenu{
-  constructor({toast}){
-    this.toast = toast;
-    this.el = null;
-    this.boundClose = (e)=>{
-      if(!this.el) return;
-      if(this.el.style.display==="none") return;
-      if(this.el.contains(e.target)) return;
-      this.hide();
-    };
-  }
+function hideCompatMenu(){
+  if(!compatMenuEl) return;
+  compatMenuEl.style.display="none";
+  compatMenuEl.dataset.open="0";
+  compatMenuEl.dataset.wx="";
+  compatMenuEl.dataset.wy="";
+  compatMenuEl.dataset.fromNode="";
+  compatMenuEl.dataset.fromPort="";
+  compatMenuEl.dataset.fromType="";
+}
 
-  ensure(){
-    if(this.el) return this.el;
-    this.el = document.createElement("div");
-    this.el.className = "compatMenu";
-    this.el.innerHTML = `<div class="title">Create compatible node…</div><div class="list"></div>`;
-    document.body.appendChild(this.el);
+function showCompatMenu(screenX, screenY, worldX, worldY, fromNode, fromPort, fromType){
+  const el = ensureCompatMenu();
+  const listEl = el.querySelector(".list");
+  listEl.innerHTML = "";
 
-    window.addEventListener("pointerdown", this.boundClose, {capture:true});
-    return this.el;
-  }
-    window.addEventListener("pointerdown", this.boundClose, {capture:true});
-    return this.el;
-  }
-
-  hide(){
-    if(!this.el) return;
-    this.el.style.display="none";
-    this.el.dataset.open="0";
-    this.el.dataset.wx="";
-    this.el.dataset.wy="";
-    this.el.dataset.fromNode="";
-    this.el.dataset.fromPort="";
-    this.el.dataset.fromType="";
-  }
-  hide(){
-    if(!this.el) return;
-    this.el.style.display="none";
-    this.el.dataset.open="0";
-    this.el.dataset.wx="";
-    this.el.dataset.wy="";
-    this.el.dataset.fromNode="";
-    this.el.dataset.fromPort="";
-    this.el.dataset.fromType="";
-  }
-
-  show(screenX, screenY, worldX, worldY, fromNode, fromPort, fromType){
-    const el = this.ensure();
-    const listEl = el.querySelector(".list");
-    listEl.innerHTML = "";
-  show(screenX, screenY, worldX, worldY, fromNode, fromPort, fromType){
-    const el = this.ensure();
-    const listEl = el.querySelector(".list");
-    listEl.innerHTML = "";
-
-    const candidates = [];
-    for(const [type, def] of Object.entries(NODE_DEFS)){
-      const inputs = def.inputs || [];
-      for(const inp of inputs){
-        if(inp.type === fromType){
-          candidates.push({type, def, inputPort: inp.name});
-        }
+  const candidates = [];
+  for(const [type, def] of Object.entries(NODE_DEFS)){
+    const inputs = def.inputs || [];
+    for(const inp of inputs){
+      if(inp.type === fromType){
+        candidates.push({type, def, inputPort: inp.name});
       }
     }
-    const candidates = [];
-    for(const [type, def] of Object.entries(NODE_DEFS)){
-      const inputs = def.inputs || [];
-      for(const inp of inputs){
-        if(inp.type === fromType){
-          candidates.push({type, def, inputPort: inp.name});
-        }
-      }
-    }
-
-    if(!candidates.length){
-      this.toast("No compatible nodes for: " + fromType);
-      this.hide();
-      return;
-    }
-    if(!candidates.length){
-      this.toast("No compatible nodes for: " + fromType);
-      this.hide();
-      return;
-    }
-
-    candidates.sort((a,b)=> (a.def.tag||"").localeCompare(b.def.tag||"") || a.def.title.localeCompare(b.def.title));
-    candidates.sort((a,b)=> (a.def.tag||"").localeCompare(b.def.tag||"") || a.def.title.localeCompare(b.def.title));
-
-    for(const c of candidates.slice(0, 18)){
-      const item = document.createElement("div");
-      item.className="compatItem";
-      item.innerHTML = `<div><div class="name">${c.def.title}</div><div class="tag">${c.def.tag||""} · input: ${c.inputPort}</div></div><div style="opacity:.5;font-size:12px">↵</div>`;
-      item.addEventListener("click", ()=>{
-        const id = addNode(c.type, worldX, worldY);
-        // create link from source to this input
-        state.links.push({id:uid(), from:{node:fromNode, port:fromPort, type:fromType}, to:{node:id, port:c.inputPort, type:fromType}});
-        selectNode(id);
-        saveState();
-        markDirtyAuto();
-        this.hide();
-        this.toast(`Added: ${c.def.title}`);
-      });
-      listEl.appendChild(item);
-    }
-    for(const c of candidates.slice(0, 18)){
-      const item = document.createElement("div");
-      item.className="compatItem";
-      item.innerHTML = `<div><div class="name">${c.def.title}</div><div class="tag">${c.def.tag||""} · input: ${c.inputPort}</div></div><div style="opacity:.5;font-size:12px">↵</div>`;
-      item.addEventListener("click", ()=>{
-        const id = addNode(c.type, worldX, worldY);
-        // create link from source to this input
-        state.links.push({id:uid(), from:{node:fromNode, port:fromPort, type:fromType}, to:{node:id, port:c.inputPort, type:fromType}});
-        selectNode(id);
-        saveState();
-        markDirtyAuto();
-        this.hide();
-        this.toast(`Added: ${c.def.title}`);
-      });
-      listEl.appendChild(item);
-    }
-
-    el.style.left = Math.min(window.innerWidth-340, Math.max(10, screenX)) + "px";
-    el.style.top  = Math.min(window.innerHeight-260, Math.max(10, screenY)) + "px";
-    el.style.display="block";
-    el.dataset.open="1";
-    el.dataset.wx=String(worldX);
-    el.dataset.wy=String(worldY);
-    el.dataset.fromNode=fromNode;
-    el.dataset.fromPort=fromPort;
-    el.dataset.fromType=fromType;
   }
-}
 
-const toastManager = new ToastManager(document.getElementById("toast"));
-toastManager.attachGlobalHandlers();
-const toast = (msg, options)=>toastManager.show(msg, options);
-
-const compatMenu = new CompatMenu({toast});
-const hideCompatMenu = ()=>compatMenu.hide();
-const showCompatMenu = (...args)=>compatMenu.show(...args);
-    el.style.left = Math.min(window.innerWidth-340, Math.max(10, screenX)) + "px";
-    el.style.top  = Math.min(window.innerHeight-260, Math.max(10, screenY)) + "px";
-    el.style.display="block";
-    el.dataset.open="1";
-    el.dataset.wx=String(worldX);
-    el.dataset.wy=String(worldY);
-    el.dataset.fromNode=fromNode;
-    el.dataset.fromPort=fromPort;
-    el.dataset.fromType=fromType;
+  if(!candidates.length){
+    toast("No compatible nodes for: " + fromType);
+    hideCompatMenu();
+    return;
   }
+
+  candidates.sort((a,b)=> (a.def.tag||"").localeCompare(b.def.tag||"") || a.def.title.localeCompare(b.def.title));
+
+  for(const c of candidates.slice(0, 18)){
+    const item = document.createElement("div");
+    item.className="compatItem";
+    item.innerHTML = `<div><div class="name">${c.def.title}</div><div class="tag">${c.def.tag||""} · input: ${c.inputPort}</div></div><div style="opacity:.5;font-size:12px">↵</div>`;
+    item.addEventListener("click", ()=>{
+      const id = addNode(c.type, worldX, worldY);
+      // create link from source to this input
+      state.links.push({id:uid(), from:{node:fromNode, port:fromPort, type:fromType}, to:{node:id, port:c.inputPort, type:fromType}});
+      selectNode(id);
+      saveState();
+      markDirtyAuto();
+      hideCompatMenu();
+      toast(`Added: ${c.def.title}`);
+    });
+    listEl.appendChild(item);
+  }
+
+  el.style.left = Math.min(window.innerWidth-340, Math.max(10, screenX)) + "px";
+  el.style.top  = Math.min(window.innerHeight-260, Math.max(10, screenY)) + "px";
+  el.style.display="block";
+  el.dataset.open="1";
+  el.dataset.wx=String(worldX);
+  el.dataset.wy=String(worldY);
+  el.dataset.fromNode=fromNode;
+  el.dataset.fromPort=fromPort;
+  el.dataset.fromType=fromType;
 }
-
-const toastManager = new ToastManager(document.getElementById("toast"));
-toastManager.attachGlobalHandlers();
-const toast = (msg, options)=>toastManager.show(msg, options);
-
-const compatMenu = new CompatMenu({toast});
-const hideCompatMenu = ()=>compatMenu.hide();
-const showCompatMenu = (...args)=>compatMenu.show(...args);
 
 const statusPill = document.getElementById("statusPill");
 function setStatus(msg){ statusPill.textContent = msg; }
@@ -761,8 +494,7 @@ function filterPreviewPath(path){
   return out;
 }
 
-function bindPreviewFilterControls(){
-function bindPreviewFilterControls(){
+function bindPreviewControls(){
   if(!prevRoleEl || !prevLayerModeEl || !prevLayerEl) return;
 
   prevRoleEl.value = previewFilter.role;
@@ -1761,7 +1493,6 @@ function maybeInjectLayerControls(lines, rules, base, t, z, layer){
   const every = Math.max(1, Math.floor(rules.injectEveryN||1));
   if(layer % every !== 0) return;
 
-  // Filament swaps (single color per layer range; pause/change at boundaries)
   // Filament swaps (single color per layer range; pause/change at boundaries)
   if(Array.isArray(rules.filamentChanges) && rules.filamentChanges.length){
     const hit = rules.filamentChanges.find(fc => (fc && Math.floor(fc.layer)===Math.floor(layer)));
@@ -5202,7 +4933,6 @@ M84`
   title:"Control Experiement",
   tag:"generator",
   desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
-  desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
   inputs:[{name:"profile", type:"profile"}],
   outputs:[{name:"path", type:"path"}],
   initData:()=>({
@@ -5493,7 +5223,6 @@ mount.appendChild(group);
   title:"Polar Array",
   tag:"modifier",
   desc:"Replicate a path around a center by polar array.",
-  desc:"Replicate a path around a center by polar array.",
   inputs:[{name:"in", type:"path"}],
   outputs:[{name:"out", type:"path"}],
   initData:()=>({
@@ -5762,7 +5491,6 @@ mount.appendChild(group);
         ctx.fillStyle="rgba(255,255,255,0.15)";
         ctx.font="12px ui-sans-serif";
         ctx.fillText("Load an image to generate a relief mesh.", 14, 26);
-        ctx.fillText("Load an image to generate a relief mesh.", 14, 26);
       }
     };
 
@@ -5869,7 +5597,6 @@ mount.appendChild(group);
     tip.innerHTML =
       "<b style='color:var(--text)'>How it works</b>"+
       "<div>This node builds a relief mesh from your image (thickness varies by brightness). Then it can output a swap-by-layer plan (single color per layer range).</div>"+
-      "<div class='muted'>This is an approximation of filament painting; you can refine stops + palette by test prints.</div>";
       "<div class='muted'>This is an approximation of filament painting; you can refine stops + palette by test prints.</div>";
     mount.appendChild(tip);
 
@@ -6398,12 +6125,7 @@ let appSettings = {
   spacePicker: true,
   spacePickerWhileTyping: false,
   pickerDelayMs: 140,
-  spawnAtCursor: true,
-  debugMode: false,
-  connectionStyle: "curved"
-  spawnAtCursor: true,
-  debugMode: false,
-  connectionStyle: "curved"
+  spawnAtCursor: true
 };
 
 function loadAppSettings(){
@@ -6427,12 +6149,6 @@ function applyAppSettings(){
   if(appEl){
     appEl.classList.toggle("showLib", !!appSettings.showLib);
   }
-  document.body.classList.toggle("debugMode", !!appSettings.debugMode);
-  updateDebugPill();
-  requestLinkRedraw();
-  document.body.classList.toggle("debugMode", !!appSettings.debugMode);
-  updateDebugPill();
-  requestLinkRedraw();
 }
 
 // Settings modal wiring
@@ -6443,12 +6159,6 @@ const setSpacePicker = document.getElementById("setSpacePicker");
 const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
 const setPickerDelay = document.getElementById("setPickerDelay");
 const setSpawnCursor = document.getElementById("setSpawnCursor");
-const setDebugMode = document.getElementById("setDebugMode");
-const setConnectionStyle = document.getElementById("setConnectionStyle");
-const debugPill = document.getElementById("debugPill");
-const setDebugMode = document.getElementById("setDebugMode");
-const setConnectionStyle = document.getElementById("setConnectionStyle");
-const debugPill = document.getElementById("debugPill");
 
 function syncSettingsUI(){
   if(!settingsOverlay) return;
@@ -6457,10 +6167,6 @@ function syncSettingsUI(){
   setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
   setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
   setSpawnCursor.checked = !!appSettings.spawnAtCursor;
-  setDebugMode.checked = !!appSettings.debugMode;
-  setConnectionStyle.value = appSettings.connectionStyle || "curved";
-  setDebugMode.checked = !!appSettings.debugMode;
-  setConnectionStyle.value = appSettings.connectionStyle || "curved";
 }
 
 function openSettings(){
@@ -6496,34 +6202,6 @@ bindSetting(setSpacePicker, "spacePicker", v=>!!v);
 bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
 bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
 bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
-bindSetting(setDebugMode, "debugMode", v=>!!v);
-bindSetting(setConnectionStyle, "connectionStyle", v=>String(v||"curved"));
-
-function updateDebugPill(){
-  if(!debugPill) return;
-  if(!appSettings.debugMode){
-    debugPill.style.display = "none";
-    return;
-  }
-  const nodeCount = Object.keys(state?.nodes || {}).length;
-  const linkCount = (state?.links || []).length;
-  debugPill.textContent = `Debug • Nodes ${nodeCount} • Links ${linkCount}`;
-  debugPill.style.display = "inline-flex";
-}
-bindSetting(setDebugMode, "debugMode", v=>!!v);
-bindSetting(setConnectionStyle, "connectionStyle", v=>String(v||"curved"));
-
-function updateDebugPill(){
-  if(!debugPill) return;
-  if(!appSettings.debugMode){
-    debugPill.style.display = "none";
-    return;
-  }
-  const nodeCount = Object.keys(state?.nodes || {}).length;
-  const linkCount = (state?.links || []).length;
-  debugPill.textContent = `Debug • Nodes ${nodeCount} • Links ${linkCount}`;
-  debugPill.style.display = "inline-flex";
-}
 
 function canUseSpacePicker(){
   if(!appSettings.spacePicker) return false;
@@ -6925,8 +6603,6 @@ function renderGraph(){
   }
   applyGraphTransform();
   requestLinkRedraw();
-  updateDebugPill();
-  updateDebugPill();
   requestAnimationFrame(()=>{ ensureAllNodesFit(); });
 }
 
@@ -6945,10 +6621,7 @@ function renderNodeEl(node){
 
   const title = document.createElement("div");
   title.className="nodeTitle";
-  const debugBadge = appSettings.debugMode ? `<span class="nodeTypePill" style="opacity:.65;">${node.id}</span>` : "";
-  title.innerHTML = `<span style="color:var(--text)">${def.title}</span><span class="nodeTypePill">${def.tag}</span>${debugBadge}`;
-  const debugBadge = appSettings.debugMode ? `<span class="nodeTypePill" style="opacity:.65;">${node.id}</span>` : "";
-  title.innerHTML = `<span style="color:var(--text)">${def.title}</span><span class="nodeTypePill">${def.tag}</span>${debugBadge}`;
+  title.innerHTML = `<span style="color:var(--text)">${def.title}</span><span class="nodeTypePill">${def.tag}</span>`;
   head.appendChild(title);
 
   const btns = document.createElement("div");
@@ -7313,54 +6986,15 @@ function clearLinkTargetHighlights(){
     d.classList.remove("canDrop","cantDrop");
   });
 }
-function buildLinkPath(ctx, x1, y1, x2, y2, style){
-  if(style === "straight"){
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    return;
-  }
-  if(style === "orthogonal"){
-    const midX = x1 + (x2 - x1) * 0.5;
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(midX, y1);
-    ctx.lineTo(midX, y2);
-    ctx.lineTo(x2, y2);
-    return;
-  }
-function buildLinkPath(ctx, x1, y1, x2, y2, style){
-  if(style === "straight"){
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    return;
-  }
-  if(style === "orthogonal"){
-    const midX = x1 + (x2 - x1) * 0.5;
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(midX, y1);
-    ctx.lineTo(midX, y2);
-    ctx.lineTo(x2, y2);
-    return;
-  }
+function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
   const dx = Math.abs(x2-x1);
   const c1x = x1 + Math.min(180, dx*0.5);
   const c2x = x2 - Math.min(180, dx*0.5);
   const c1y = y1;
   const c2y = y2;
-  ctx.moveTo(x1, y1);
-  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
-}
-
-function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
-  ctx.moveTo(x1, y1);
-  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
-}
-
-function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
 
   const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim() || "#42ffb3";
   const stroke = col || accent;
-  const style = appSettings.connectionStyle || "curved";
-  const style = appSettings.connectionStyle || "curved";
 
   ctx.lineCap = "round";
 
@@ -7370,8 +7004,8 @@ function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
     ctx.lineWidth = w;
     ctx.setLineDash([6,6]);
     ctx.beginPath();
-    buildLinkPath(ctx, x1, y1, x2, y2, style);
-    buildLinkPath(ctx, x1, y1, x2, y2, style);
+    ctx.moveTo(x1,y1);
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
     ctx.stroke();
     ctx.restore();
     return;
@@ -7383,8 +7017,8 @@ function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
     ctx.lineWidth = w;
     ctx.setLineDash([8,6]);
     ctx.beginPath();
-    buildLinkPath(ctx, x1, y1, x2, y2, style);
-    buildLinkPath(ctx, x1, y1, x2, y2, style);
+    ctx.moveTo(x1,y1);
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
     ctx.stroke();
     ctx.restore();
     return;
@@ -7395,8 +7029,8 @@ function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
   ctx.strokeStyle = "rgba(0,0,0,0.26)";
   ctx.lineWidth = w + 3;
   ctx.beginPath();
-  buildLinkPath(ctx, x1, y1, x2, y2, style);
-  buildLinkPath(ctx, x1, y1, x2, y2, style);
+  ctx.moveTo(x1,y1);
+  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
   ctx.stroke();
 
   // main stroke
@@ -7405,16 +7039,14 @@ function drawBezier(ctx, x1,y1,x2,y2, w, mode, col){
   ctx.lineWidth = w;
   ctx.setLineDash([]);
   ctx.beginPath();
-  buildLinkPath(ctx, x1, y1, x2, y2, style);
-  buildLinkPath(ctx, x1, y1, x2, y2, style);
+  ctx.moveTo(x1,y1);
+  ctx.bezierCurveTo(c1x,c1y,c2x,c2y,x2,y2);
   ctx.stroke();
   ctx.restore();
 }
 function drawLinks(){
   try{
     const rect = graphWrap.getBoundingClientRect();
-    updateDebugPill();
-    updateDebugPill();
 const px = devicePixelRatio || 1;
 const w = Math.floor(rect.width * px);
 const h = Math.floor(rect.height * px);
@@ -8008,11 +7640,8 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(0,0,0,0);
 
-  bindPreviewFilterControls();
-  bindPreviewFilterControls();
+  bindPreviewControls();
   bindPreviewMeshControls();
-  bindPreviewCanvasControls();
-  bindPreviewCanvasControls();
   applyPreviewLegendColors();
   preview.ok = true;
   requestAnimationFrame(drawPreviewLoop);
@@ -8319,8 +7948,7 @@ if(mesh && mesh.tris && mesh.tris.length>=9){
   toast("Fit preview");
 }
 
-function bindPreviewCanvasControls(){
-function bindPreviewCanvasControls(){
+function bindPreviewControls(){
   glCanvas.addEventListener("contextmenu", (e)=>e.preventDefault());
 
   glCanvas.addEventListener("pointerdown", (e)=>{
@@ -9198,9 +8826,7 @@ function demoFeaturePaintOptimize(){
 
 
 function demoControlExperiementRipple(){
-function demoControlExperiementRipple(){
   state = defaultState();
-  const fc = addNode("Control Experiement", 120, 140);
   const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const z  = addNode("Z Warp", 700, 150);
@@ -9217,9 +8843,7 @@ function demoControlExperiementRipple(){
   state.nodes[z].data.wavelength=26;
 
   state.nodes[note].data.title="Demo: Control Experiement Ripple Vase (+ optional non-planar)";
-  state.nodes[note].data.title="Demo: Control Experiement Ripple Vase (+ optional non-planar)";
   state.nodes[note].data.text =
-`This is a **path-first** model (no mesh slicing).\n\nGraph:\nControl Experiement → (optional) Z Warp → Printer → Export\n\nTry:\n- Increase ripples for tighter texture\n- Use Z Warp for non-planar wave finish (small amplitude)\n`;
 `This is a **path-first** model (no mesh slicing).\n\nGraph:\nControl Experiement → (optional) Z Warp → Printer → Export\n\nTry:\n- Increase ripples for tighter texture\n- Use Z Warp for non-planar wave finish (small amplitude)\n`;
 
   connect(fc, 0, z, 0);
@@ -9229,13 +8853,11 @@ function demoControlExperiementRipple(){
   selectNode(fc);
   centerViewOn(fc);
   toast("Loaded demo: Control Experiement Ripple Vase");
-  toast("Loaded demo: Control Experiement Ripple Vase");
   markDirtyAuto();
 }
 
 function demoPolarFractions(){
   state = defaultState();
-  const fc = addNode("Control Experiement", 120, 140);
   const fc = addNode("Control Experiement", 120, 140);
   const arr= addNode("Polar Array", 460, 160);
   const prn= addNode("Printer", 720, 120);
@@ -9256,7 +8878,6 @@ function demoPolarFractions(){
   state.nodes[note].data.title="Demo: Fractional Engine (Polar)";
   state.nodes[note].data.text =
 `Inspired by polar/fractional demos.\n\nGraph:\nControl Experiement → Polar Array → Printer → Export\n\nTry:\n- denom 7 / numer 3 for different rhythms\n- copies 2–8 for kaleidoscope patterns\n`;
-`Inspired by polar/fractional demos.\n\nGraph:\nControl Experiement → Polar Array → Printer → Export\n\nTry:\n- denom 7 / numer 3 for different rhythms\n- copies 2–8 for kaleidoscope patterns\n`;
 
   connect(fc, 0, arr, 0);
   connect(arr,0, exp, 0);
@@ -9270,7 +8891,6 @@ function demoPolarFractions(){
 
 function demoPinSupport(){
   state = defaultState();
-  const fc = addNode("Control Experiement", 120, 140);
   const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
@@ -9342,9 +8962,7 @@ function demoZWarp(){
 
 
 function demoControlExperiementNonplanarSpacer(){
-function demoControlExperiementNonplanarSpacer(){
   state = defaultState();
-  const fc = addNode("Control Experiement", 120, 140);
   const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
@@ -9360,7 +8978,6 @@ function demoControlExperiementNonplanarSpacer(){
 
   state.nodes[note].data.title="Demo: Nonplanar Spacer (wavy ring)";
   state.nodes[note].data.text =
-`A simple ring spacer with a wavy/nonplanar outer wall.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Start with small wave amp (0.3–1.0mm)\n- Strong cooling helps on wavy Z\n`;
 `A simple ring spacer with a wavy/nonplanar outer wall.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Start with small wave amp (0.3–1.0mm)\n- Strong cooling helps on wavy Z\n`;
 
   connect(fc,0, exp,0);
@@ -9420,7 +9037,6 @@ function demoCalibrationTower(){
 function demoWeaveVase(){
   state = defaultState();
   const fc = addNode("Control Experiement", 120, 140);
-  const fc = addNode("Control Experiement", 120, 140);
   const weave = addNode("Weave Offset", 460, 160);
   const prn= addNode("Printer", 720, 120);
   const exp= addNode("Export", 1010, 120);
@@ -9437,7 +9053,6 @@ function demoWeaveVase(){
   state.nodes[note].data.title="Demo: Woven Vase (Weave Offset)";
   state.nodes[note].data.text =
 `Add a weaving look by offsetting points along the path normal.\n\nGraph:\nControl Experiement → Weave Offset → Printer → Export\n\nTry:\n- amp 0.3–1.2\n- freq 5–14\n`;
-`Add a weaving look by offsetting points along the path normal.\n\nGraph:\nControl Experiement → Weave Offset → Printer → Export\n\nTry:\n- amp 0.3–1.2\n- freq 5–14\n`;
 
   connect(fc,0, weave,0);
   connect(weave,0, exp,0);
@@ -9451,7 +9066,6 @@ function demoWeaveVase(){
 
 function demoThreadedTube(){
   state = defaultState();
-  const fc = addNode("Control Experiement", 120, 140);
   const fc = addNode("Control Experiement", 120, 140);
   const prn= addNode("Printer", 470, 120);
   const exp= addNode("Export", 740, 120);
@@ -9467,7 +9081,6 @@ function demoThreadedTube(){
 
   state.nodes[note].data.title="Demo: Threaded Tube (path-first)";
   state.nodes[note].data.text =
-`Inspired by threaded tube studies. This is a simplified external thread.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Increase depth carefully (risk of collisions)\n`;
 `Inspired by threaded tube studies. This is a simplified external thread.\n\nGraph:\nControl Experiement → Printer → Export\n\nTip:\n- Increase depth carefully (risk of collisions)\n`;
 
   connect(fc,0, exp,0);
@@ -9511,9 +9124,7 @@ function demoSnakeFill(){
 
 
 function demoImageRelief(){
-function demoImageRelief(){
   state = defaultState();
-  const img = addNode("Image", 120, 140);
   const img = addNode("Image", 120, 140);
   const slic= addNode("Slicer", 470, 140);
   const prn = addNode("Printer", 780, 120);
@@ -9533,7 +9144,6 @@ function demoImageRelief(){
   ctx.beginPath(); ctx.arc(c.width*0.68, c.height*0.52, 42, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(0,0,0,0.25)";
   ctx.font="bold 28px ui-sans-serif";
-  ctx.fillText("IR", 22, 44);
   ctx.fillText("IR", 22, 44);
 
   state.nodes[img].data.imgB64 = c.toDataURL("image/png");
@@ -9559,9 +9169,7 @@ function demoImageRelief(){
   state.nodes[slic].data.bottomLayers=0;
 
   state.nodes[note].data.title="Demo: Image Relief (filament swaps)";
-  state.nodes[note].data.title="Demo: Image Relief (filament swaps)";
   state.nodes[note].data.text =
-`This demo uses the Image node.\n\nGraph:\nImage → Slicer → Export\n\n- The image becomes a relief mesh (thickness varies by brightness)\n- Stops define swap-by-layer changes (M600 by default)\n\nTry:\n- tweak gamma / thickness range\n- adjust stops (layer → palette index)\n`;
 `This demo uses the Image node.\n\nGraph:\nImage → Slicer → Export\n\n- The image becomes a relief mesh (thickness varies by brightness)\n- Stops define swap-by-layer changes (M600 by default)\n\nTry:\n- tweak gamma / thickness range\n- adjust stops (layer → palette index)\n`;
 
   connect(img, 0, slic, 0);     // mesh
@@ -9571,7 +9179,6 @@ function demoImageRelief(){
 
   selectNode(img);
   centerViewOn(img);
-  toast("Loaded demo: Image Relief");
   toast("Loaded demo: Image Relief");
   markDirtyAuto();
 }
@@ -9584,7 +9191,6 @@ const DEMOS = [
   { id:"ctrl_ripple", name:"Demo: Control Experiement Ripple Vase", build: demoControlExperiementRipple },
   { id:"fc_polar", name:"Demo: Fractional Engine (Polar)", build: demoPolarFractions },
   { id:"fc_pin", name:"Demo: Pin Support Challenge", build: demoPinSupport },
-  { id:"ctrl_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoControlExperiementNonplanarSpacer },
   { id:"ctrl_spacer", name:"Demo: Nonplanar Spacer (wavy ring)", build: demoControlExperiementNonplanarSpacer },
   { id:"z_warp", name:"Demo: Z Warp (Non-Planar Finish)", build: demoZWarp },
   { id:"cal_tower", name:"Demo: Calibration Tower (Temp steps)", build: demoCalibrationTower },
