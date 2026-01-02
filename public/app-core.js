@@ -285,6 +285,16 @@ function setViewerMode(mode){
 
 function bindPreviewMeshControls(){
   if(bindPreviewMeshControls.bound) return;
+  if(prevViewerEl && !customElements.get("model-viewer")){
+    const mvOption = prevViewerEl.querySelector('option[value="mv"]');
+    if(mvOption){
+      mvOption.disabled = true;
+      mvOption.textContent = "Model-Viewer (offline)";
+    }
+    if(previewMeshSettings.viewer === "mv"){
+      previewMeshSettings.viewer = "gl";
+    }
+  }
   if(prevMeshRenderEl){
     prevMeshRenderEl.value = previewMeshSettings.render;
     prevMeshRenderEl.addEventListener("change", ()=>{
@@ -1287,14 +1297,30 @@ const roleFlowDefault = (role)=> {
   return 1.0;
 };
 
-const rules = rulesBundle || {
+const rules = {
     layerHeightHint: layerHDefault,
     injectEveryN: 1,
     speedFn: (t,i,n,x,y,z,layer,role)=> roleSpeedDefault(role, layer),
     flowFn: ()=> 1,
-    enableTemp:false, tempFn:null,
-    enableFan:false, fanFn:null
+    enableTemp:false,
+    tempFn:null,
+    enableFan:false,
+    fanFn:null,
+    filamentChanges: null,
+    filamentCmd: null
   };
+  if(rulesBundle && typeof rulesBundle === "object"){
+    if(typeof rulesBundle.speedFn === "function") rules.speedFn = rulesBundle.speedFn;
+    if(typeof rulesBundle.flowFn === "function") rules.flowFn = rulesBundle.flowFn;
+    if(typeof rulesBundle.tempFn === "function") rules.tempFn = rulesBundle.tempFn;
+    if(typeof rulesBundle.fanFn === "function") rules.fanFn = rulesBundle.fanFn;
+    if(typeof rulesBundle.layerHeightHint === "number") rules.layerHeightHint = rulesBundle.layerHeightHint;
+    if(typeof rulesBundle.injectEveryN === "number") rules.injectEveryN = rulesBundle.injectEveryN;
+    if(typeof rulesBundle.enableTemp === "boolean") rules.enableTemp = rulesBundle.enableTemp;
+    if(typeof rulesBundle.enableFan === "boolean") rules.enableFan = rulesBundle.enableFan;
+    if(Array.isArray(rulesBundle.filamentChanges)) rules.filamentChanges = rulesBundle.filamentChanges;
+    if(typeof rulesBundle.filamentCmd === "string") rules.filamentCmd = rulesBundle.filamentCmd;
+  }
 
   const lines=[];
   const nl = ()=>lines.push("");

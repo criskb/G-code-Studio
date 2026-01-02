@@ -666,7 +666,13 @@ body.light .toggle .knob{
   min-width: 92px;
 }
 .pcSel:focus{ border-color: rgba(255,255,255,0.22); }
-.pcRange{ flex:1; }
+.pcRange{
+  flex:1;
+  min-width: 140px;
+  height: 18px;
+  cursor: pointer;
+  pointer-events:auto;
+}
 .pcHint{ color:var(--muted); }
 
 .pcVal{
@@ -837,6 +843,7 @@ body.light .toggle .knob{
   display:flex;
   flex-direction:column;
   gap:10px;
+  pointer-events:auto;
 }
 .gcodeDock #gcodePre,
 .studioDock #gcodePre{
