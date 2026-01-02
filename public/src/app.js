@@ -54,6 +54,53 @@ function registerNodeModule(module, source){
 window.GCODE_STUDIO.registerNode = registerNodeModule;
 window.GCODE_STUDIO.NODE_DEFS = NODE_DEFS;
 
+const NODE_MODULES = [
+  "/nodes/calibration-tower.js",
+  "/nodes/export.js",
+  "/nodes/feature-paint.js",
+  "/nodes/fullcontrol-model.js",
+  "/nodes/g-code-post.js",
+  "/nodes/image-hueforge.js",
+  "/nodes/import-mesh.js",
+  "/nodes/inspector.js",
+  "/nodes/layer-schedule.js",
+  "/nodes/mesh-import.js",
+  "/nodes/mesh-primitive.js",
+  "/nodes/mesh-primitive-legacy.js",
+  "/nodes/non-planar.js",
+  "/nodes/note.js",
+  "/nodes/orca-preset.js",
+  "/nodes/path.js",
+  "/nodes/polar-array.js",
+  "/nodes/printer.js",
+  "/nodes/project-to-mesh.js",
+  "/nodes/repeat.js",
+  "/nodes/rules.js",
+  "/nodes/slicer.js",
+  "/nodes/snake-wall.js",
+  "/nodes/studio-view.js",
+  "/nodes/svg-import.js",
+  "/nodes/transform.js",
+  "/nodes/travel-optimize.js",
+  "/nodes/vase-control-points.js",
+  "/nodes/weave-offset.js",
+  "/nodes/z-warp.js"
+];
+
+async function loadNodesFromList(){
+  const failures = [];
+  for(const modulePath of NODE_MODULES){
+    try{
+      const mod = await import(modulePath);
+      registerNodeModule(mod, modulePath);
+    }catch(err){
+      failures.push(modulePath);
+      console.warn("Failed to load node module", modulePath, err);
+    }
+  }
+  return failures;
+}
+
 const toastEl = document.getElementById("toast");
 function toast(msg, ms=1400){
   toastEl.textContent = msg;
@@ -210,6 +257,13 @@ async function loadNodes(){
     console.warn("Fallback node manifest error", err);
     if(!entries.length || Object.keys(NODE_DEFS).length === 0){
       toast("Fallback node loader failed: " + (err.message || String(err)));
+    }
+  }
+
+  if(Object.keys(NODE_DEFS).length === 0){
+    const fallbackFailures = await loadNodesFromList();
+    if(fallbackFailures.length){
+      console.warn("Fallback direct module load failures", fallbackFailures);
     }
   }
 
