@@ -1,0 +1,20 @@
+[
+  {
+    "id": "planar-slice-cube",
+    "name": "Planar Slice \u2014 Cube",
+    "file": "planar-slice-cube.json",
+    "note": "Mesh Primitive \u2192 Slicer \u2192 Export. A clean planar slicing baseline.\n\nTry: adjust layer height or infill density on the Slicer node."
+  },
+  {
+    "id": "feature-paint-optimize",
+    "name": "Feature Paint + Travel Optimize",
+    "file": "feature-paint-optimize.json",
+    "note": "Mesh Primitive \u2192 Slicer \u2192 Feature Paint \u2192 Travel Optimize \u2192 Export.\n\nTry: tweak rules for walls/top/infill in Feature Paint."
+  },
+  {
+    "id": "nonplanar-wave",
+    "name": "Non-Planar Wave",
+    "file": "nonplanar-wave.json",
+    "note": "Path \u2192 Z Warp \u2192 Rules \u2192 Export.\n\nTry: adjust amplitude/wavelength in Z Warp or the fan ramp in Rules."
+  }
+]
