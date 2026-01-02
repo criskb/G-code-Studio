@@ -94,7 +94,7 @@ async function loadNodesFromList(){
       const mod = await import(modulePath);
       registerNodeModule(mod, modulePath);
     }catch(err){
-      failures.push(modulePath);
+      failures.push({ module: modulePath, error: err });
       console.warn("Failed to load node module", modulePath, err);
     }
   }
@@ -215,6 +215,10 @@ async function loadNodes(){
   if(nodeRegistry.loaded) return NODE_DEFS;
   setStatus("Loading nodes…");
   let entries = [];
+  const failures = [];
+  const recordFailure = (moduleName, error)=>{
+    failures.push({ module: moduleName, error });
+  };
   try{
     const res = await fetch("/api/nodes");
     if(!res.ok) throw new Error(`Node manager: ${res.status} ${res.statusText}`);
@@ -225,13 +229,12 @@ async function loadNodes(){
     toast("Node manager error: " + (err.message || String(err)));
   }
 
-  const failures = [];
   await Promise.all(entries.map(async (entry)=>{
     try{
       const mod = await import(entry.module);
       registerNodeModule(mod, entry.module);
     }catch(err){
-      failures.push(entry?.name || entry?.module || "unknown");
+      recordFailure(entry?.module || entry?.name || "unknown", err);
       console.warn("Failed to load node", entry, err);
     }
   }));
@@ -254,6 +257,7 @@ async function loadNodes(){
       await loadManifest(Date.now());
     }
   }catch(err){
+    recordFailure("/nodes/index.js", err);
     console.warn("Fallback node manifest error", err);
     if(!entries.length || Object.keys(NODE_DEFS).length === 0){
       toast("Fallback node loader failed: " + (err.message || String(err)));
@@ -263,6 +267,7 @@ async function loadNodes(){
   if(Object.keys(NODE_DEFS).length === 0){
     const fallbackFailures = await loadNodesFromList();
     if(fallbackFailures.length){
+      fallbackFailures.forEach((failure)=>recordFailure(failure.module, failure.error));
       console.warn("Fallback direct module load failures", fallbackFailures);
     }
   }
@@ -272,6 +277,30 @@ async function loadNodes(){
   }
 
   const total = Object.keys(NODE_DEFS).length;
+  if(total === 0){
+    const bannerId = "nodeRegistryBanner";
+    if(!document.getElementById(bannerId)){
+      const actions = document.querySelector(".topbar .actions") || document.querySelector(".panel.left .head");
+      if(actions){
+        const banner = document.createElement("div");
+        banner.id = bannerId;
+        banner.textContent = "Node registry empty — open DevTools Console.";
+        banner.style.marginRight = "12px";
+        banner.style.padding = "6px 10px";
+        banner.style.borderRadius = "999px";
+        banner.style.background = "rgba(255, 90, 90, 0.18)";
+        banner.style.border = "1px solid rgba(255, 90, 90, 0.45)";
+        banner.style.fontSize = "12px";
+        banner.style.fontWeight = "600";
+        banner.style.color = "var(--text)";
+        banner.style.whiteSpace = "nowrap";
+        actions.prepend(banner);
+      }
+    }
+    failures.forEach((failure)=>{
+      console.error("Node module load failure:", failure.module, failure.error);
+    });
+  }
   nodeRegistry.loaded = total > 0;
   setStatus(total ? `Nodes: ${total}` : "Nodes: 0");
   return NODE_DEFS;
