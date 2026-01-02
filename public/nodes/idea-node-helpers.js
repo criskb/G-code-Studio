@@ -1,3 +1,4 @@
+(function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
 
@@ -106,3 +107,4 @@ window.GCODE_STUDIO.IDEA_NODE_UTILS = {
   simpleReport,
   simpleNode
 };
+})();
