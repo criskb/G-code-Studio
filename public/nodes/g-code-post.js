@@ -1,9 +1,6 @@
-import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PRIMITIVE_V2, SCHEMA_SLICER_V2, studioDock, annotatePathHints, applyMeshTransform, arrayBufferFromB64, b64FromArrayBuffer, bedAlignMesh, buildFromImage, buildGcodeWithRules, buildMeshIndex, centerMesh, clamp, compileExpr, divider, dividerTiny, downloadText, drawMeshPreview2D, drawWireframe2D, elInput, elNumber, elSelect, elTextarea, elToggle, escapeHTML, field, fmt, genEquation, genFromSVG, genPolar, genSpiralVase, grid2, inferLayer, markDirtyAuto, meshRuntimeCache, meshTopZ, parseSTL, pickLayerHeight,
-  rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
-
-export default {
-  type: 'G-code Post',
-  def: {
+window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+window.GCODE_STUDIO.NODE_DEFS['G-code Post'] = {
   title:"G-code Post",
   tag:"output",
   desc:"Post-process G-code: prepend/append + find/replace (regex optional).",
@@ -91,5 +88,4 @@ export default {
     txt = String(d.prepend||"") + txt + String(d.append||"");
     return { out: txt };
   }
-}
 };

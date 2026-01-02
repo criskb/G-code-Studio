@@ -60,5 +60,7 @@ Choose how links are drawn between nodes:
 
 ## Project layout
 - `public/index.html` — main UI, graph editor, and styling.
-- `public/nodes/` — node definitions and logic.
+- `public/app-core.js` / `public/app-runtime.js` — core app logic and runtime behavior.
+- `public/app-schemas.js` — shared schema constants for node UIs.
+- `public/nodes/` — per-node definitions.
 - `server.js` — lightweight local server for the app.

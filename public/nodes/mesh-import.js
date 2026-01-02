@@ -1,11 +1,7 @@
-import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PRIMITIVE_V2, SCHEMA_SLICER_V2, studioDock, annotatePathHints, applyMeshTransform, arrayBufferFromB64, b64FromArrayBuffer, bedAlignMesh, buildFromImage, buildGcodeWithRules, buildMeshIndex, centerMesh, clamp, compileExpr, divider, dividerTiny, downloadText, drawMeshPreview2D, drawWireframe2D, elInput, elNumber, elSelect, elTextarea, elToggle, escapeHTML, field, fmt, genEquation, genFromSVG, genPolar, genSpiralVase, grid2, inferLayer, markDirtyAuto, meshRuntimeCache, meshTopZ, parseSTL, pickLayerHeight,
-  rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
-
-export default {
-  type: 'Mesh Import',
-  def: {
-  title:"Mesh Import (Legacy)", tag:"mesh",
-  hidden: true,
+window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+window.GCODE_STUDIO.NODE_DEFS['Mesh Import'] = {
+  title:"Mesh Import", tag:"mesh",
   desc:"Load an STL (binary/ASCII). Outputs a mesh, and optionally a surface raster path.",
   inputs: [],
   outputs: [{name:"mesh", type:"mesh"}, {name:"path", type:"path"}],
@@ -166,5 +162,4 @@ export default {
     }
     return { mesh, path };
   }
-}
 };

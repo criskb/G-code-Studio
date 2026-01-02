@@ -1,9 +1,6 @@
-import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PRIMITIVE_V2, SCHEMA_SLICER_V2, studioDock, annotatePathHints, applyMeshTransform, arrayBufferFromB64, b64FromArrayBuffer, bedAlignMesh, buildFromImage, buildGcodeWithRules, buildMeshIndex, centerMesh, clamp, compileExpr, divider, dividerTiny, downloadText, drawMeshPreview2D, drawWireframe2D, elInput, elNumber, elSelect, elTextarea, elToggle, escapeHTML, field, fmt, genEquation, genFromSVG, genPolar, genSpiralVase, grid2, inferLayer, markDirtyAuto, meshRuntimeCache, meshTopZ, parseSTL, pickLayerHeight,
-  rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
-
-export default {
-  type: 'SVG Import',
-  def: {
+window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+window.GCODE_STUDIO.NODE_DEFS['SVG Import'] = {
     title: "SVG Import", tag: "import",
     desc: "Upload or paste an SVG, sample geometry into a toolpath.",
     inputs: [], outputs: [{name:"path", type:"path"}],
@@ -64,5 +61,4 @@ export default {
       }
     },
     evaluate: (node)=>({ path: genFromSVG(node.data) })
-  }
-};
+  };

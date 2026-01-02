@@ -1,9 +1,6 @@
-import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PRIMITIVE_V2, SCHEMA_SLICER_V2, studioDock, annotatePathHints, applyMeshTransform, arrayBufferFromB64, b64FromArrayBuffer, bedAlignMesh, buildFromImage, buildGcodeWithRules, buildMeshIndex, centerMesh, clamp, compileExpr, divider, dividerTiny, downloadText, drawMeshPreview2D, drawWireframe2D, elInput, elNumber, elSelect, elTextarea, elToggle, escapeHTML, field, fmt, genEquation, genFromSVG, genPolar, genSpiralVase, grid2, inferLayer, markDirtyAuto, meshRuntimeCache, meshTopZ, parseSTL, pickLayerHeight,
-  rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
-
-export default {
-  type: 'Studio View',
-  def: {
+window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+window.GCODE_STUDIO.NODE_DEFS['Studio View'] = {
   title:"Studio View",
   tag:"ui",
   desc:"Docked Preview & Output as a node so the canvas can use full width.",
@@ -41,5 +38,4 @@ export default {
   },
   // make it big by default
   defaultSize: { w: 560, h: 780 }
-}
 };

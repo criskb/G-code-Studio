@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicRoot = path.join(__dirname, "public");
-const nodesRoot = path.join(publicRoot, "nodes");
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -18,36 +17,6 @@ const mimeTypes = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp"
 };
-
-function sendJson(res, status, payload) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(payload, null, 2));
-}
-
-async function handleApi(req, res) {
-  if (req.url === "/api/nodes") {
-    try {
-      const entries = await fs.readdir(nodesRoot, { withFileTypes: true });
-      const nodes = entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
-        .filter((entry) => entry.name !== "node-helpers.js")
-        .map((entry) => entry.name)
-        .sort((a, b) => a.localeCompare(b))
-        .map((file) => {
-          const name = file.replace(/\.js$/, "");
-          return {
-            name,
-            module: `/nodes/${file}`
-          };
-        });
-      return sendJson(res, 200, { nodes });
-    } catch (error) {
-      return sendJson(res, 500, { error: error.message || String(error) });
-    }
-  }
-
-  return sendJson(res, 404, { error: "Not found" });
-}
 
 async function serveStatic(req, res) {
   const urlPath = req.url.split("?")[0];
@@ -86,10 +55,6 @@ const server = createServer(async (req, res) => {
   if (!req.url) {
     res.writeHead(400);
     res.end("Bad request");
-    return;
-  }
-  if (req.url.startsWith("/api/")) {
-    await handleApi(req, res);
     return;
   }
   await serveStatic(req, res);
