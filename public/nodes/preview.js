@@ -25,6 +25,7 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
     }
 
     try{ bindPreviewControls(); }catch(_){ }
+    try{ bindPreviewCanvasControls(); }catch(_){ }
     try{ bindPreviewMeshControls(); }catch(_){ }
     try{ applyPreviewLegendColors(); }catch(_){ }
 

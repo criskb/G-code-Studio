@@ -28,6 +28,7 @@ window.GCODE_STUDIO.NODE_DEFS['Studio View'] = {
     }
 
     try{ bindPreviewControls(); }catch(_){ }
+    try{ bindPreviewCanvasControls(); }catch(_){ }
     try{ bindPreviewMeshControls(); }catch(_){ }
     try{ applyPreviewLegendColors(); }catch(_){ }
 

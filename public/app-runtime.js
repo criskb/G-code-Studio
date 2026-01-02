@@ -1677,7 +1677,10 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(0,0,0,0);
 
-  bindPreviewControls();
+  bindPreviewCanvasControls();
+  if(typeof bindPreviewControls === "function"){
+    bindPreviewControls();
+  }
   bindPreviewMeshControls();
   applyPreviewLegendColors();
   preview.ok = true;
@@ -1984,7 +1987,7 @@ if(mesh && mesh.tris && mesh.tris.length>=9){
   toast("Fit preview");
 }
 
-function bindPreviewControls(){
+function bindPreviewCanvasControls(){
   glCanvas.addEventListener("contextmenu", (e)=>e.preventDefault());
 
   glCanvas.addEventListener("pointerdown", (e)=>{
