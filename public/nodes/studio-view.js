@@ -27,6 +27,10 @@ window.GCODE_STUDIO.NODE_DEFS['Studio View'] = {
       wrap.appendChild(h);
     }
 
+    try{ bindPreviewControls(); }catch(_){ }
+    try{ bindPreviewMeshControls(); }catch(_){ }
+    try{ applyPreviewLegendColors(); }catch(_){ }
+
     // Ensure preview controls remain interactive inside the node
     stopGraphGestures(wrap.querySelector("#glPreview"));
     stopGraphGestures(wrap.querySelector("#mvPreview"));

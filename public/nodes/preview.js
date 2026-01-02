@@ -24,6 +24,10 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
       wrap.appendChild(h);
     }
 
+    try{ bindPreviewControls(); }catch(_){ }
+    try{ bindPreviewMeshControls(); }catch(_){ }
+    try{ applyPreviewLegendColors(); }catch(_){ }
+
     stopGraphGestures(wrap.querySelector("#glPreview"));
     stopGraphGestures(wrap.querySelector("#mvPreview"));
     stopGraphGestures(wrap.querySelector("#previewControls"));
