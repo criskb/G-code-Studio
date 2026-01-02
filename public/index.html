@@ -289,6 +289,8 @@
 ---------------------------- */
 const LS_KEY = "gcode-studio:nodegraph:v3";
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const DEFAULT_NODE_W = 460;
+const DEFAULT_NODE_H = 240;
 const fmt = (n, d=2)=> (isFinite(n)? Number(n).toFixed(d) : "—");
 const rad = (deg)=>deg * Math.PI / 180;
 const uid = ()=> Math.random().toString(16).slice(2,10) + "-" + Math.random().toString(16).slice(2,6);
@@ -6613,8 +6615,8 @@ function renderNodeEl(node){
   el.dataset.nodeId = node.id;
   el.style.left = (node.x||0) + "px";
   el.style.top  = (node.y||0) + "px";
-  el.style.width = (node.w||320) + "px";
-  el.style.height = (node.h||220) + "px";
+  el.style.width = (node.w || DEFAULT_NODE_W) + "px";
+  el.style.height = (node.h || DEFAULT_NODE_H) + "px";
 
   const head = document.createElement("div");
   head.className="nodeHead";
@@ -6731,7 +6733,13 @@ body.appendChild(portsRight);
     e.stopPropagation();
     selectNode(node.id);
     g.resizingNodeId = node.id;
-    g.resizeStart = {sx:e.clientX, sy:e.clientY, w:node.w||320, h:node.h||220, zoom:state.ui.zoom};
+    g.resizeStart = {
+      sx: e.clientX,
+      sy: e.clientY,
+      w: node.w || DEFAULT_NODE_W,
+      h: node.h || DEFAULT_NODE_H,
+      zoom: state.ui.zoom
+    };
     resize.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -6739,8 +6747,8 @@ body.appendChild(portsRight);
     if(g.resizingNodeId!==node.id) return;
     const dx = (e.clientX - g.resizeStart.sx)/g.resizeStart.zoom;
     const dy = (e.clientY - g.resizeStart.sy)/g.resizeStart.zoom;
-    node.w = clamp(g.resizeStart.w + dx, 240, 2400);
-    node.h = clamp(g.resizeStart.h + dy, 160, 2400);
+    node.w = Math.max(240, g.resizeStart.w + dx);
+    node.h = Math.max(160, g.resizeStart.h + dy);
     el.style.width = node.w + "px";
     el.style.height = node.h + "px";
     requestLinkRedraw();
@@ -7207,8 +7215,8 @@ graphWrap.addEventListener("mousedown", (e)=>{
 function addNode(type, x, y){
   const def = NODE_DEFS[type];
   const id = uid();
-  const w = def?.defaultW ?? 320;
-  const h = def?.defaultH ?? 240;
+  const w = def?.defaultW ?? DEFAULT_NODE_W;
+  const h = def?.defaultH ?? DEFAULT_NODE_H;
   state.nodes[id] = { id, type, x:x??120, y:y??120, w, h, data:def.initData() };
   renderGraph();
   return id;
@@ -7251,8 +7259,8 @@ function centerViewOn(nodeId){
   const rect = graphWrap.getBoundingClientRect();
   const target = (typeof nodeId === "string") ? state.nodes[nodeId] : nodeId;
   if(!target) return;
-  const cx = (target.x + (target.w||320)/2);
-  const cy = (target.y + (target.h||220)/2);
+  const cx = (target.x + (target.w || DEFAULT_NODE_W) / 2);
+  const cy = (target.y + (target.h || DEFAULT_NODE_H) / 2);
   state.ui.panX = rect.width/2 - cx*state.ui.zoom;
   state.ui.panY = rect.height/2 - cy*state.ui.zoom;
   applyGraphTransform();
@@ -7381,7 +7389,8 @@ function sanitizeImported(obj){
     if(legacyTypeMap[n.type]) n.type = legacyTypeMap[n.type];
     if(!NODE_DEFS[n.type]){ delete s.nodes[id]; continue; }
     if(!n.data) n.data = NODE_DEFS[n.type].initData();
-    if(n.w==null) n.w=320; if(n.h==null) n.h=240;
+    if(n.w == null) n.w = DEFAULT_NODE_W;
+    if(n.h == null) n.h = DEFAULT_NODE_H;
   }
   s.links = s.links.filter(L=>{
     const a = s.nodes[L.from?.node];
@@ -9719,8 +9728,8 @@ document.getElementById("btnFit").addEventListener("click", ()=>{
   for(const n of nodes){
     minX = Math.min(minX, n.x);
     minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + (n.w||320));
-    maxY = Math.max(maxY, n.y + (n.h||220));
+    maxX = Math.max(maxX, n.x + (n.w || DEFAULT_NODE_W));
+    maxY = Math.max(maxY, n.y + (n.h || DEFAULT_NODE_H));
   }
   const rect = graphWrap.getBoundingClientRect();
   const pad = 80;
@@ -9743,8 +9752,8 @@ document.getElementById("btnCenter").addEventListener("click", ()=>{
     if(!nodes.length) return;
     target = nodes[0];
   }
-  const cx = (target.x + (target.w||320)/2);
-  const cy = (target.y + (target.h||220)/2);
+  const cx = (target.x + (target.w || DEFAULT_NODE_W) / 2);
+  const cy = (target.y + (target.h || DEFAULT_NODE_H) / 2);
   state.ui.panX = rect.width/2 - cx*state.ui.zoom;
   state.ui.panY = rect.height/2 - cy*state.ui.zoom;
   applyGraphTransform(); requestLinkRedraw(); saveState();
