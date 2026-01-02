@@ -2,9 +2,9 @@ import { NODE_DEFS, SCHEMA_IMPORT_MESH_V2, SCHEMA_MESH_PRIMITIVE, SCHEMA_MESH_PR
   rad, refreshNodeContent, renderSchema, rerenderNode, safeName, saveState, schedulePreviewUpdate, sliceMeshPlanar, stopGraphGestures, surfaceRasterPath, toast } from './node-helpers.js';
 
 export default {
-  type: 'Image (HueForge)',
+  type: 'Image',
   def: {
-  title:"Image (HueForge)",
+  title:"Image",
   tag:"generator",
   desc:"Load an image → generate a heightmap relief (front-lit lithophane style) + optional swap-by-layer filament plan.",
   inputs:[{name:"profile", type:"profile"}],
@@ -105,7 +105,7 @@ export default {
       }else{
         ctx.fillStyle="rgba(255,255,255,0.15)";
         ctx.font="12px ui-sans-serif";
-        ctx.fillText("Load an image to generate a HueForge-style relief mesh.", 14, 26);
+        ctx.fillText("Load an image to generate a relief mesh.", 14, 26);
       }
     };
 
@@ -212,7 +212,7 @@ export default {
     tip.innerHTML =
       "<b style='color:var(--text)'>How it works</b>"+
       "<div>This node builds a relief mesh from your image (thickness varies by brightness). Then it can output a swap-by-layer plan (single color per layer range).</div>"+
-      "<div class='muted'>This is an approximation of HueForge-style filament painting; you can refine stops + palette by test prints.</div>";
+      "<div class='muted'>This is an approximation of filament painting; you can refine stops + palette by test prints.</div>";
     mount.appendChild(tip);
 
     // helpers used above

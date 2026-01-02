@@ -1,0 +1,43 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0f14" />
+      <stop offset="100%" stop-color="#0d141c" />
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#121a24" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#0f1620" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" fill="url(#bg)" />
+  <rect x="240" y="80" width="720" height="560" rx="24" fill="url(#panel)" stroke="#1e2a36" />
+  <text x="280" y="130" fill="#E6EEF7" font-family="Arial, sans-serif" font-size="24" font-weight="700">Settings</text>
+  <text x="820" y="130" fill="#9fb1c5" font-family="Arial, sans-serif" font-size="14">Esc to close</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="280" y="170" width="640" height="58" rx="16" fill="#0f151d" stroke="#1f2a36" />
+    <text x="306" y="200" fill="#E6EEF7" font-size="14" font-weight="600">Show Node Library sidebar</text>
+    <text x="306" y="220" fill="#9fb1c5" font-size="12">Optional panel with search + list.</text>
+    <rect x="820" y="184" width="78" height="30" rx="14" fill="#111a23" stroke="#243241" />
+    <text x="844" y="203" fill="#42ffb3" font-size="12" font-weight="700">ON</text>
+
+    <rect x="280" y="244" width="640" height="58" rx="16" fill="#0f151d" stroke="#1f2a36" />
+    <text x="306" y="274" fill="#E6EEF7" font-size="14" font-weight="600">Debug mode</text>
+    <text x="306" y="294" fill="#9fb1c5" font-size="12">Show node IDs and link counts.</text>
+    <rect x="820" y="258" width="78" height="30" rx="14" fill="#111a23" stroke="#243241" />
+    <text x="844" y="277" fill="#42ffb3" font-size="12" font-weight="700">ON</text>
+
+    <rect x="280" y="318" width="640" height="58" rx="16" fill="#0f151d" stroke="#1f2a36" />
+    <text x="306" y="348" fill="#E6EEF7" font-size="14" font-weight="600">Connection style</text>
+    <text x="306" y="368" fill="#9fb1c5" font-size="12">Choose how node links are rendered.</text>
+    <rect x="760" y="332" width="140" height="30" rx="12" fill="#111a23" stroke="#243241" />
+    <text x="786" y="352" fill="#E6EEF7" font-size="12">Orthogonal</text>
+
+    <rect x="280" y="392" width="640" height="120" rx="16" fill="#0f151d" stroke="#1f2a36" />
+    <text x="306" y="424" fill="#E6EEF7" font-size="14" font-weight="600">Keyboard shortcuts</text>
+    <text x="306" y="446" fill="#9fb1c5" font-size="12">Space • Pan • Zoom • Run</text>
+    <text x="306" y="470" fill="#9fb1c5" font-size="12">Del • Esc</text>
+  </g>
+
+  <text x="280" y="620" fill="#9fb1c5" font-family="Arial, sans-serif" font-size="12">Illustrative settings snapshot (generated for documentation)</text>
+</svg>
