@@ -1,6 +1,18 @@
 (function(){
-window.GCODE_STUDIO = window.GCODE_STUDIO || {};
-window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+const IDEA_NODE_UTILS_KEY = "__GCODE_STUDIO_IDEA_NODE_UTILS__";
+const NODE_DEFS_KEY = "__GCODE_STUDIO_NODE_DEFS__";
+const sharedNodeDefs = window[NODE_DEFS_KEY] || window.GCODE_STUDIO?.NODE_DEFS || {};
+window[NODE_DEFS_KEY] = sharedNodeDefs;
+
+const ensureIdeaUtils = (studio, ideaNodeUtils)=>{
+  if(!studio) return;
+  if(studio.NODE_DEFS && studio.NODE_DEFS !== sharedNodeDefs){
+    Object.assign(sharedNodeDefs, studio.NODE_DEFS);
+  }
+  studio.NODE_DEFS = sharedNodeDefs;
+  studio.IDEA_NODE_UTILS_FALLBACK = studio.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
+  studio.IDEA_NODE_UTILS = studio.IDEA_NODE_UTILS || studio.IDEA_NODE_UTILS_FALLBACK;
+};
 
 const clamp = (v, min, max)=>Math.max(min, Math.min(max, v));
 const numOr = (v, fallback)=>Number.isFinite(Number(v)) ? Number(v) : fallback;
@@ -121,7 +133,20 @@ const ideaNodeUtils = {
   simpleReport,
   simpleNode
 };
+const sharedIdeaNodeUtils = window[IDEA_NODE_UTILS_KEY] || ideaNodeUtils;
+window[IDEA_NODE_UTILS_KEY] = sharedIdeaNodeUtils;
 
-window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK = window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
+let studioRef = window.GCODE_STUDIO || {};
+ensureIdeaUtils(studioRef, sharedIdeaNodeUtils);
+Object.defineProperty(window, "GCODE_STUDIO", {
+  configurable: true,
+  get(){
+    return studioRef;
+  },
+  set(next){
+    studioRef = next || {};
+    ensureIdeaUtils(studioRef, sharedIdeaNodeUtils);
+  }
+});
+window.GCODE_STUDIO = studioRef;
 })();

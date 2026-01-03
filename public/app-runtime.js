@@ -1285,15 +1285,6 @@ function requestLinkRedraw(){
 }
 
 /* ---- Link type coloring + target highlights ---- */
-const TYPE_ALIASES = {
-  meshArray: "mesh[]"
-};
-function normalizePortType(type){
-  return TYPE_ALIASES[type] || type;
-}
-function isTypeCompatible(a, b){
-  return normalizePortType(a) === normalizePortType(b);
-}
 const TYPE_COLORS = {
   path:   "rgba(106,166,255,0.92)",
   mesh:   "rgba(255,176,82,0.92)",
