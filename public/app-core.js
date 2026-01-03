@@ -15,6 +15,15 @@ const fmt = (n, d=2)=> (isFinite(n)? Number(n).toFixed(d) : "—");
 const rad = (deg)=>deg * Math.PI / 180;
 const uid = ()=> Math.random().toString(16).slice(2,10) + "-" + Math.random().toString(16).slice(2,6);
 const safeName = (s)=> String(s||"").toLowerCase().replace(/[^a-z0-9\-_]+/g,"_").slice(0,48);
+const TYPE_ALIASES = {
+  meshArray: "mesh[]"
+};
+function normalizePortType(type){
+  return TYPE_ALIASES[type] || type;
+}
+function isTypeCompatible(a, b){
+  return normalizePortType(a) === normalizePortType(b);
+}
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
 const downloadText = (filename, text)=>{
@@ -91,7 +100,7 @@ function showCompatMenu(screenX, screenY, worldX, worldY, fromNode, fromPort, fr
   for(const [type, def] of Object.entries(NODE_DEFS)){
     const inputs = def.inputs || [];
     for(const inp of inputs){
-      if(inp.type === fromType){
+      if(isTypeCompatible(inp.type, fromType)){
         candidates.push({type, def, inputPort: inp.name});
       }
     }
@@ -111,8 +120,9 @@ function showCompatMenu(screenX, screenY, worldX, worldY, fromNode, fromPort, fr
     item.innerHTML = `<div><div class="name">${c.def.title}</div><div class="tag">${c.def.tag||""} · input: ${c.inputPort}</div></div><div style="opacity:.5;font-size:12px">↵</div>`;
     item.addEventListener("click", ()=>{
       const id = addNode(c.type, worldX, worldY);
+      const linkType = normalizePortType(fromType);
       // create link from source to this input
-      state.links.push({id:uid(), from:{node:fromNode, port:fromPort, type:fromType}, to:{node:id, port:c.inputPort, type:fromType}});
+      state.links.push({id:uid(), from:{node:fromNode, port:fromPort, type:linkType}, to:{node:id, port:c.inputPort, type:linkType}});
       selectNode(id);
       saveState();
       markDirtyAuto();

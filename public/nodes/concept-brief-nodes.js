@@ -335,7 +335,7 @@ simpleNode({
     {name:"csv", type:"csv"}
   ],
   outputs: [
-    {name:"meshes", type:"meshArray"},
+    {name:"meshes", type:"mesh[]"},
     {name:"platePlan", type:"json"},
     {name:"profiles", type:"json"}
   ],
