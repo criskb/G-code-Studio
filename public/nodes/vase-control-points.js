@@ -21,6 +21,7 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     ],
     smooth:0.35,
     bedAlign:true,
+    linkHandles:true,
     // spiral wall
     outputSpiralPath:true,
     layerHeight:0.24,
@@ -255,14 +256,14 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       }else if(dragHandle === "in"){
         p.hInU = ur.u - p.u;
         p.hInR = ur.r - p.r;
-        if(p.type === "smooth"){
+        if(d.linkHandles){
           p.hOutU = -p.hInU;
           p.hOutR = -p.hInR;
         }
       }else if(dragHandle === "out"){
         p.hOutU = ur.u - p.u;
         p.hOutR = ur.r - p.r;
-        if(p.type === "smooth"){
+        if(d.linkHandles){
           p.hInU = -p.hOutU;
           p.hInR = -p.hOutR;
         }
@@ -298,6 +299,45 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     mount.appendChild(field("Revolve segments", elNumber(d.segments??160, v=>{ d.segments=v; markDirtyAuto(); saveState(); }, 1)));
     mount.appendChild(field("Smooth", elNumber(d.smooth??0.35, v=>{ d.smooth=v; markDirtyAuto(); saveState(); draw(); }, 0.01)));
     mount.appendChild(field("Bed align", elToggle(!!d.bedAlign, v=>{ d.bedAlign=!!v; markDirtyAuto(); saveState(); })));
+    mount.appendChild(field("Link handles", elToggle(d.linkHandles!==false, v=>{ d.linkHandles=!!v; markDirtyAuto(); saveState(); })));
+
+    const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
+    const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
+    const selLabel = document.createElement("div");
+    selLabel.className = "hint";
+    selLabel.textContent = selectedPoint ? `Selected point #${selected + 1}` : "Select a control point to edit handles.";
+    mount.appendChild(selLabel);
+    if(selectedPoint){
+      const typeWrap = document.createElement("div");
+      typeWrap.className = "miniRow";
+      const smoothBtn = document.createElement("button");
+      smoothBtn.className = "btn";
+      smoothBtn.textContent = "Smooth";
+      smoothBtn.style.opacity = selectedPoint.type === "smooth" ? "1" : "0.6";
+      smoothBtn.addEventListener("click", ()=>{
+        selectedPoint.type = "smooth";
+        saveState(); markDirtyAuto(); draw(); refreshNodeContent(node.id);
+      });
+      const sharpBtn = document.createElement("button");
+      sharpBtn.className = "btn";
+      sharpBtn.textContent = "Sharp";
+      sharpBtn.style.opacity = selectedPoint.type === "sharp" ? "1" : "0.6";
+      sharpBtn.addEventListener("click", ()=>{
+        selectedPoint.type = "sharp";
+        saveState(); markDirtyAuto(); draw(); refreshNodeContent(node.id);
+      });
+      typeWrap.appendChild(smoothBtn);
+      typeWrap.appendChild(sharpBtn);
+      mount.appendChild(field("Point type", typeWrap));
+      mount.appendChild(grid2([
+        field("Handle in U", elNumber(selectedPoint.hInU, v=>{ selectedPoint.hInU=v; if(d.linkHandles){ selectedPoint.hOutU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle in R", elNumber(selectedPoint.hInR, v=>{ selectedPoint.hInR=v; if(d.linkHandles){ selectedPoint.hOutR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+      mount.appendChild(grid2([
+        field("Handle out U", elNumber(selectedPoint.hOutU, v=>{ selectedPoint.hOutU=v; if(d.linkHandles){ selectedPoint.hInU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle out R", elNumber(selectedPoint.hOutR, v=>{ selectedPoint.hOutR=v; if(d.linkHandles){ selectedPoint.hInR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+    }
 
     const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
     const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
