@@ -2072,22 +2072,31 @@ const vs2 = `
   attribute vec3 aNor;
   uniform mat4 uVP;
   varying vec3 vN;
+  varying vec3 vPos;
   void main(){
     vN = aNor;
+    vPos = aPos;
     gl_Position = uVP * vec4(aPos, 1.0);
   }
 `;
 const fs2 = `
   precision mediump float;
   varying vec3 vN;
+  varying vec3 vPos;
   uniform vec3 uLight;
+  uniform vec3 uEye;
   uniform vec3 uBase;
   uniform float uAlpha;
   void main(){
     vec3 N = normalize(vN);
-    float d = max(0.0, dot(N, normalize(uLight)));
-    float a = 0.25 + 0.75*d;
-    gl_FragColor = vec4(uBase * a, uAlpha);
+    vec3 L = normalize(uLight);
+    vec3 V = normalize(uEye - vPos);
+    vec3 H = normalize(L + V);
+    float diff = max(0.0, dot(N, L));
+    float spec = pow(max(dot(N, H), 0.0), 48.0);
+    float ambient = 0.18;
+    vec3 color = uBase * (ambient + diff) + vec3(0.5) * spec;
+    gl_FragColor = vec4(color, uAlpha);
   }
 `;
 const prog2 = glCreateProgram(gl, vs2, fs2);
@@ -2096,6 +2105,7 @@ preview.aPos2 = gl.getAttribLocation(prog2, "aPos");
 preview.aNor = gl.getAttribLocation(prog2, "aNor");
 preview.uVP2 = gl.getUniformLocation(prog2, "uVP");
 preview.uLight = gl.getUniformLocation(prog2, "uLight");
+preview.uEye = gl.getUniformLocation(prog2, "uEye");
 preview.uBase = gl.getUniformLocation(prog2, "uBase");
 preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
 
@@ -2107,6 +2117,8 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   preview.meshBuf = gl.createBuffer();
   preview.meshTriPosBuf = gl.createBuffer();
   preview.meshTriNorBuf = gl.createBuffer();
+  preview.pathTriBuf = gl.createBuffer();
+  preview.pathTriColBuf = gl.createBuffer();
 
   gl.enableVertexAttribArray(preview.aPos);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
@@ -2162,6 +2174,7 @@ function updateVP(){
   if(preview.progSolid && preview.uVP2){
     gl.useProgram(preview.progSolid);
     gl.uniformMatrix4fv(preview.uVP2, false, vp);
+    if(preview.uEye) gl.uniform3f(preview.uEye, eye.x, eye.y, eye.z);
   }
   // restore line program by default
   gl.useProgram(preview.prog);
@@ -2325,7 +2338,10 @@ function setPreviewPath(machinePath){
   if(!gl) return;
   const pos = [];
   const col = [];
+  const triPos = [];
+  const triCol = [];
   let last = null;
+  const useHd = typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd";
 
   const pushVertex = (pt)=>{
     const X = pt.X ?? pt.x ?? 0;
@@ -2336,6 +2352,41 @@ function setPreviewPath(machinePath){
     col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
   };
 
+  const pushRibbon = (a, b, width)=>{
+    const ax = a.X ?? a.x ?? 0;
+    const ay = a.Y ?? a.y ?? 0;
+    const az = a.z ?? 0;
+    const bx = b.X ?? b.x ?? 0;
+    const by = b.Y ?? b.y ?? 0;
+    const bz = b.z ?? 0;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if(len <= 1e-6) return;
+    const half = width * 0.5;
+    const px = -dy / len * half;
+    const py = dx / len * half;
+    const aLx = ax + px;
+    const aLy = ay + py;
+    const aRx = ax - px;
+    const aRy = ay - py;
+    const bLx = bx + px;
+    const bLy = by + py;
+    const bRx = bx - px;
+    const bRy = by - py;
+    const rgba = getPreviewColor(b);
+    const pushTri = (x,y,z)=>{
+      triPos.push(x,y,z);
+      triCol.push(rgba[0], rgba[1], rgba[2], rgba[3]);
+    };
+    pushTri(aLx, aLy, az);
+    pushTri(aRx, aRy, az);
+    pushTri(bLx, bLy, bz);
+    pushTri(bLx, bLy, bz);
+    pushTri(aRx, aRy, az);
+    pushTri(bRx, bRy, bz);
+  };
+
   for(const p of machinePath){
     if(!p){
       last = null;
@@ -2344,6 +2395,10 @@ function setPreviewPath(machinePath){
     if(last){
       pushVertex(last);
       pushVertex(p);
+      if(useHd){
+        const width = Math.max(0.15, Number(p.meta?.lineWidth || previewLineSettings?.width || 0.6));
+        pushRibbon(last, p, width);
+      }
     }
     last = p;
   }
@@ -2351,6 +2406,9 @@ function setPreviewPath(machinePath){
   uploadBuffer(preview.buf, new Float32Array(pos));
   uploadBuffer(preview.colBuf, new Float32Array(col));
   preview.counts.path = pos.length / 3;
+  uploadBuffer(preview.pathTriBuf, new Float32Array(triPos));
+  uploadBuffer(preview.pathTriColBuf, new Float32Array(triCol));
+  preview.counts.pathTris = triPos.length / 3;
 
   // tool dot at last point
   const tool = new Float32Array(3);
@@ -2358,8 +2416,10 @@ function setPreviewPath(machinePath){
     tool[0]=last.X ?? last.x ?? 0;
     tool[1]=last.Y ?? last.y ?? 0;
     tool[2]=last.z ?? 0;
+    preview.toolPos = {x: tool[0], y: tool[1], z: tool[2]};
   } else {
     tool[0]=preview.bed.w/2; tool[1]=preview.bed.d/2; tool[2]=0;
+    preview.toolPos = {x: tool[0], y: tool[1], z: tool[2]};
   }
   uploadBuffer(preview.toolBuf, tool);
   preview.counts.tool = 1;
@@ -2541,6 +2601,14 @@ function drawPreviewLoop(){
   gl.viewport(0,0,glCanvas.width, glCanvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  const previewCtl = window.__GCODE_STUDIO_PREVIEW__;
+  if(previewCtl?.scrub?.playing && previewCtl?.scrub?.follow && preview.toolPos){
+    const target = preview.cam.target;
+    target.x += (preview.toolPos.x - target.x) * 0.08;
+    target.y += (preview.toolPos.y - target.y) * 0.08;
+    target.z += (preview.toolPos.z - target.z) * 0.08;
+  }
+
   updateVP();
 
   // Draw grid
@@ -2595,16 +2663,26 @@ if(previewMeshSettings.render !== "off"){
 
   const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim();
   const accent2 = getComputedStyle(document.body).getPropertyValue("--accent2").trim();
-  setColor(accent2, 0.35);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
-  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(preview.aCol);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
-  gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+  if(typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd" && preview.counts.pathTris>2){
+    setColor(accent, 0.95);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriBuf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(preview.aCol);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriColBuf);
+    gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, preview.counts.pathTris);
+  }else{
+    setColor(accent2, 0.35);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(preview.aCol);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
+    gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
+    if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
 
-  setColor(accent, 0.85);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+    setColor(accent, 0.85);
+    if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+  }
 
   // Tool point
   setColor("rgba(255,255,255,0.9)", 0.9);
