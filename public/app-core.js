@@ -3615,6 +3615,19 @@ const lastLayer = layers - 1;
     // Walls (include outer loop as first perimeter, then inset)
     const wallsPaths = [];
     if(per>0){
+      const emitCenterline = (outerLoop, innerLoop, role)=>{
+        if(!outerLoop || !innerLoop) return;
+        const n = Math.min(outerLoop.length, innerLoop.length);
+        if(n < 2) return;
+        for(let i=0;i<n;i++){
+          const a = outerLoop[i];
+          const b = innerLoop[i];
+          if(!a || !b) continue;
+          const x = (a[0] + b[0]) * 0.5;
+          const y = (a[1] + b[1]) * 0.5;
+          wallsPaths.push({x, y, z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role}});
+        }
+      };
       const emitWallLoop = (poly, loopRole, offsetDir)=>{
         let cur = poly;
         for(let k=0;k<per;k++){
@@ -3623,8 +3636,16 @@ const lastLayer = layers - 1;
             const r = (k===0) ? loopRole : "wall_inner";
             wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r}});
           }
+          if(k === per-1) break;
           const off = offsetPolyMiter(cur, offsetDir);
           if(!off) break;
+          if(opts.detectThinWalls){
+            const next = offsetPolyMiter(off, offsetDir);
+            if(!next){
+              emitCenterline(cur, off, "gap_fill");
+              break;
+            }
+          }
           cur = off;
         }
       };
