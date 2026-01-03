@@ -1,5 +1,6 @@
 (function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 const { parseNumberList, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 
 simpleNode({

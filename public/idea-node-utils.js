@@ -1,6 +1,5 @@
 (function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
 
 const clamp = (v, min, max)=>Math.max(min, Math.min(max, v));
@@ -23,6 +22,20 @@ function getPathInput(ctx, node, port){
 function getMeshInput(ctx, node, port){
   const inp = ctx.getInput(node.id, port);
   return inp?.mesh || inp?.out || inp || null;
+}
+
+function computeMeshBounds(tris){
+  let minX=Infinity, minY=Infinity, minZ=Infinity;
+  let maxX=-Infinity, maxY=-Infinity, maxZ=-Infinity;
+  for(let i=0;i<tris.length;i+=3){
+    const x = tris[i] ?? 0;
+    const y = tris[i+1] ?? 0;
+    const z = tris[i+2] ?? 0;
+    minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
+  }
+  if(!isFinite(minX)) return null;
+  return { min: {x:minX,y:minY,z:minZ}, max: {x:maxX,y:maxY,z:maxZ} };
 }
 
 function getBounds(mesh){
@@ -108,6 +121,7 @@ const ideaNodeUtils = {
   simpleReport,
   simpleNode
 };
+
 window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK = window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
 window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 })();
