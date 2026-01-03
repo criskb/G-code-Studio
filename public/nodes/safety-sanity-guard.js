@@ -5,7 +5,7 @@ const { simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 simpleNode({
   name: "Safety/Sanity Guard",
   tag: "gcode",
-  desc: "Validate G-code against machine safety limits.",
+  desc: "Validate G-code against machine safety limits using a Machine Profile adapter.",
   inputs: [
     {name:"gcode", type:"gcode"},
     {name:"machineProfile", type:"machineProfile"}
