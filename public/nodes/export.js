@@ -15,7 +15,16 @@ window.GCODE_STUDIO.NODE_DEFS['Export'] = {
       const profIn = ctx.getInput(node.id, "profile");
       const meshIn = ctx.getInput(node.id, "mesh");
       const toolpath = (toolpathIn?.toolpath || toolpathIn?.out || toolpathIn || null);
-      const toolpathPath = toolpath ? toolpathToPath(toolpath) : null;
+      let toolpathPath = null;
+      if(toolpath){
+        if(toolpath.layers){
+          toolpathPath = toolpathToPath(toolpath)?.path || [];
+        }else if(Array.isArray(toolpath.path)){
+          toolpathPath = toolpath.path;
+        }else if(Array.isArray(toolpath)){
+          toolpathPath = toolpath;
+        }
+      }
       const path = toolpathPath || (pathIn?.out || pathIn?.path || pathIn || []);
       const profile = (profIn?.profile || profIn || ctx.defaultProfile || null);
       const rules = (rulesIn?.rules || rulesIn || null);
