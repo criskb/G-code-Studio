@@ -3412,6 +3412,19 @@ const lastLayer = layers - 1;
       return inside;
     };
 
+    const isPointInPoly = (pt, poly)=>{
+      let inside = false;
+      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+        const xi = poly[i][0], yi = poly[i][1];
+        const xj = poly[j][0], yj = poly[j][1];
+        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    };
+    const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
+
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
     const roleSolid = isBottom ? "bottom" : (isTop ? "top" : null);
