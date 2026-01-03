@@ -5,7 +5,7 @@ const { getPathInput, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 simpleNode({
   name: "Why Did It Fail? Analyzer",
   tag: "analysis",
-  desc: "Flag common print failure risks.",
+  desc: "Flag common print failure risks. Feed Machine Profile + Material Profile adapters for context.",
   inputs: [
     {name:"toolpath", type:"toolpath"},
     {name:"mesh", type:"mesh"},

@@ -5,7 +5,7 @@ const { getPathInput, simpleReport, simpleNode } = window.GCODE_STUDIO.IDEA_NODE
 simpleNode({
   name: "Pressure Advance Estimator",
   tag: "analysis",
-  desc: "Estimate pressure advance from toolpath changes.",
+  desc: "Estimate pressure advance from toolpath changes using Machine/Material Profile inputs.",
   inputs: [
     {name:"toolpath", type:"toolpath"},
     {name:"machineProfile", type:"machineProfile"},

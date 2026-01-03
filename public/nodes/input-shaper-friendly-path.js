@@ -5,7 +5,7 @@ const { getPathInput, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
 simpleNode({
   name: "Input Shaper Friendly Path",
   tag: "modifier",
-  desc: "Smooth toolpath geometry for input shaper friendliness.",
+  desc: "Smooth toolpath geometry for input shaper friendliness using Resonance Profile input.",
   inputs: [
     {name:"toolpath", type:"toolpath"},
     {name:"resonanceProfile", type:"resonanceProfile"}

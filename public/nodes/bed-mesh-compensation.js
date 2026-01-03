@@ -5,7 +5,7 @@ const { getPathInput, simpleReport, simpleNode } = window.GCODE_STUDIO.IDEA_NODE
 simpleNode({
   name: "Bed Mesh Compensation",
   tag: "analysis",
-  desc: "Apply bed mesh Z offsets and report corrections.",
+  desc: "Apply bed mesh Z offsets and report corrections from the Bed Mesh adapter.",
   inputs: [
     {name:"toolpath", type:"toolpath"},
     {name:"bedMesh", type:"bedMesh"}
