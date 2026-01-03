@@ -5,7 +5,7 @@ window.GCODE_STUDIO.NODE_DEFS['Export'] = {
     uiSchema:SCHEMA_EXPORT,
   desc:"Generate G-code (needs Path + Printer; Rules optional).",
     inputs: [{name:"path", type:"path"}, {name:"rules", type:"rules"}, {name:"profile", type:"profile"}, {name:"mesh", type:"mesh"}],
-    outputs: [{name:"gcode", type:"gcode"}],
+    outputs: [{name:"gcode", type:"gcode"}, {name:"path", type:"path"}, {name:"mesh", type:"mesh"}],
     initData: ()=>({ addLayerComments:true, capPreviewChars:200000, fileName:"gcode-studio_output" }),
     render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
     evaluate:(node, ctx)=>{
@@ -24,6 +24,6 @@ window.GCODE_STUDIO.NODE_DEFS['Export'] = {
       state.outputs.stats = stats;
       state.outputs.path = machinePath;
       state.outputs.mesh = mesh || null;
-      return { gcode };
+      return { gcode, path: machinePath, mesh };
     }
   };
