@@ -212,14 +212,38 @@ const SHORTCUT_DEFAULTS = {
   fitView: "KeyF",
   centerView: "KeyC"
 };
+const THEME_DEFAULTS = {
+  custom: false,
+  bg0: "#0b0f14",
+  bg1: "#0d141c",
+  panel: "#0a0e14",
+  panel2: "#0c121a",
+  accent: "#42ffb3",
+  accent2: "#6aa6ff",
+  text: "#f5f7ff",
+  muted: "#a7b0bb"
+};
+const GRAPH_BG_DEFAULTS = {
+  pattern: "dots",
+  dotSize: 28,
+  dotOpacity: 0.18,
+  gridSize: 32
+};
 let appSettings = {
   showLib: false,
   spacePicker: true,
   spacePickerWhileTyping: false,
   pickerDelayMs: 140,
   spawnAtCursor: true,
+  theme: { ...THEME_DEFAULTS },
+  graphBg: { ...GRAPH_BG_DEFAULTS },
   shortcuts: { ...SHORTCUT_DEFAULTS }
 };
+
+function normalizeAppSettings(){
+  appSettings.theme = { ...THEME_DEFAULTS, ...(appSettings.theme || {}) };
+  appSettings.graphBg = { ...GRAPH_BG_DEFAULTS, ...(appSettings.graphBg || {}) };
+}
 
 function loadAppSettings(){
   try{
@@ -231,6 +255,7 @@ function loadAppSettings(){
       }
     }
   }catch(_){}
+  normalizeAppSettings();
   applyAppSettings();
 }
 
@@ -240,6 +265,7 @@ function mergeUserConfig(cfg){
     const merged = { ...appSettings, ...cfg.appSettings };
     merged.shortcuts = { ...SHORTCUT_DEFAULTS, ...(cfg.appSettings.shortcuts || {}), ...(appSettings.shortcuts || {}) };
     appSettings = merged;
+    normalizeAppSettings();
   }
 }
 
@@ -277,6 +303,8 @@ function applyAppSettings(){
   if(appEl){
     appEl.classList.toggle("showLib", !!appSettings.showLib);
   }
+  applyThemeSettings();
+  applyGraphBgSettings();
 }
 
 // Settings modal wiring
@@ -288,6 +316,19 @@ const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
 const setPickerDelay = document.getElementById("setPickerDelay");
 const setSpawnCursor = document.getElementById("setSpawnCursor");
 const shortcutList = document.getElementById("shortcutList");
+const setThemeCustom = document.getElementById("setThemeCustom");
+const setThemeBg0 = document.getElementById("setThemeBg0");
+const setThemeBg1 = document.getElementById("setThemeBg1");
+const setThemePanel = document.getElementById("setThemePanel");
+const setThemePanel2 = document.getElementById("setThemePanel2");
+const setThemeAccent = document.getElementById("setThemeAccent");
+const setThemeAccent2 = document.getElementById("setThemeAccent2");
+const setThemeText = document.getElementById("setThemeText");
+const setThemeMuted = document.getElementById("setThemeMuted");
+const setGraphPattern = document.getElementById("setGraphPattern");
+const setGraphDotSize = document.getElementById("setGraphDotSize");
+const setGraphDotOpacity = document.getElementById("setGraphDotOpacity");
+const setGraphGridSize = document.getElementById("setGraphGridSize");
 
 const SHORTCUT_DEFS = [
   { key: "openPicker", label: "Open Node Picker", hint: "Space" },
@@ -309,6 +350,24 @@ function syncSettingsUI(){
   setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
   setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
   setSpawnCursor.checked = !!appSettings.spawnAtCursor;
+  if(appSettings.theme){
+    setThemeCustom.checked = !!appSettings.theme.custom;
+    setThemeBg0.value = appSettings.theme.bg0 || "#0b0f14";
+    setThemeBg1.value = appSettings.theme.bg1 || "#0d141c";
+    setThemePanel.value = appSettings.theme.panel || "#0a0e14";
+    setThemePanel2.value = appSettings.theme.panel2 || "#0c121a";
+    setThemeAccent.value = appSettings.theme.accent || "#42ffb3";
+    setThemeAccent2.value = appSettings.theme.accent2 || "#6aa6ff";
+    setThemeText.value = appSettings.theme.text || "#f5f7ff";
+    setThemeMuted.value = appSettings.theme.muted || "#a7b0bb";
+  }
+  if(appSettings.graphBg){
+    setGraphPattern.value = appSettings.graphBg.pattern || "dots";
+    setGraphDotSize.value = String(appSettings.graphBg.dotSize ?? 28);
+    setGraphDotOpacity.value = String(Math.round((appSettings.graphBg.dotOpacity ?? 0.18) * 100));
+    setGraphGridSize.value = String(appSettings.graphBg.gridSize ?? 32);
+  }
+  syncThemeControlState();
   renderShortcutList();
 }
 
@@ -345,6 +404,85 @@ bindSetting(setSpacePicker, "spacePicker", v=>!!v);
 bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
 bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
 bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
+bindSetting(setThemeCustom, "theme", v=>({ ...appSettings.theme, custom: !!v }));
+bindSetting(setThemeBg0, "theme", v=>({ ...appSettings.theme, bg0: v }));
+bindSetting(setThemeBg1, "theme", v=>({ ...appSettings.theme, bg1: v }));
+bindSetting(setThemePanel, "theme", v=>({ ...appSettings.theme, panel: v }));
+bindSetting(setThemePanel2, "theme", v=>({ ...appSettings.theme, panel2: v }));
+bindSetting(setThemeAccent, "theme", v=>({ ...appSettings.theme, accent: v }));
+bindSetting(setThemeAccent2, "theme", v=>({ ...appSettings.theme, accent2: v }));
+bindSetting(setThemeText, "theme", v=>({ ...appSettings.theme, text: v }));
+bindSetting(setThemeMuted, "theme", v=>({ ...appSettings.theme, muted: v }));
+bindSetting(setGraphPattern, "graphBg", v=>({ ...appSettings.graphBg, pattern: v }));
+bindSetting(setGraphDotSize, "graphBg", v=>({ ...appSettings.graphBg, dotSize: Math.max(6, Math.min(80, Number(v)||28)) }));
+bindSetting(setGraphDotOpacity, "graphBg", v=>({ ...appSettings.graphBg, dotOpacity: Math.max(0, Math.min(1, Number(v)/100 || 0)) }));
+bindSetting(setGraphGridSize, "graphBg", v=>({ ...appSettings.graphBg, gridSize: Math.max(8, Math.min(120, Number(v)||32)) }));
+setThemeCustom?.addEventListener("change", syncThemeControlState);
+
+function syncThemeControlState(){
+  const enabled = !!appSettings.theme?.custom;
+  const inputs = [
+    setThemeBg0,
+    setThemeBg1,
+    setThemePanel,
+    setThemePanel2,
+    setThemeAccent,
+    setThemeAccent2,
+    setThemeText,
+    setThemeMuted
+  ];
+  inputs.forEach((el)=>{
+    if(!el) return;
+    el.disabled = !enabled;
+    el.closest(".npItem")?.classList?.toggle("isDisabled", !enabled);
+  });
+}
+
+function applyThemeSettings(){
+  const root = document.documentElement;
+  const theme = appSettings.theme || {};
+  if(theme.custom){
+    root.style.setProperty("--bg0", theme.bg0 || "#0b0f14");
+    root.style.setProperty("--bg1", theme.bg1 || theme.bg0 || "#0b0f14");
+    root.style.setProperty("--panel", theme.panel || "#0a0e14");
+    root.style.setProperty("--panel2", theme.panel2 || theme.panel || "#0a0e14");
+    root.style.setProperty("--accent", theme.accent || "#42ffb3");
+    root.style.setProperty("--accent2", theme.accent2 || "#6aa6ff");
+    root.style.setProperty("--text", theme.text || "#f5f7ff");
+    root.style.setProperty("--muted", theme.muted || "#a7b0bb");
+  }else{
+    root.style.removeProperty("--bg0");
+    root.style.removeProperty("--bg1");
+    root.style.removeProperty("--panel");
+    root.style.removeProperty("--panel2");
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent2");
+    root.style.removeProperty("--text");
+    root.style.removeProperty("--muted");
+  }
+}
+
+function applyGraphBgSettings(){
+  const graphBg = document.getElementById("graphBg");
+  if(!graphBg) return;
+  const opts = appSettings.graphBg || {};
+  const pattern = opts.pattern || "dots";
+  graphBg.classList.remove(
+    "pattern-dots",
+    "pattern-grid",
+    "pattern-crosshatch",
+    "pattern-diagonal",
+    "pattern-squares",
+    "pattern-checker",
+    "pattern-diamond",
+    "pattern-none"
+  );
+  graphBg.classList.add(`pattern-${pattern}`);
+  const root = document.documentElement;
+  root.style.setProperty("--graph-dot-size", `${opts.dotSize ?? 28}px`);
+  root.style.setProperty("--graph-dot-opacity", String(opts.dotOpacity ?? 0.18));
+  root.style.setProperty("--graph-grid-size", `${opts.gridSize ?? 32}px`);
+}
 
 function shortcutToLabel(code){
   if(!code) return "—";
@@ -1285,15 +1423,6 @@ function requestLinkRedraw(){
 }
 
 /* ---- Link type coloring + target highlights ---- */
-const TYPE_ALIASES = {
-  meshArray: "mesh[]"
-};
-function normalizePortType(type){
-  return TYPE_ALIASES[type] || type;
-}
-function isTypeCompatible(a, b){
-  return normalizePortType(a) === normalizePortType(b);
-}
 const TYPE_COLORS = {
   path:   "rgba(106,166,255,0.92)",
   mesh:   "rgba(255,176,82,0.92)",
@@ -1943,22 +2072,31 @@ const vs2 = `
   attribute vec3 aNor;
   uniform mat4 uVP;
   varying vec3 vN;
+  varying vec3 vPos;
   void main(){
     vN = aNor;
+    vPos = aPos;
     gl_Position = uVP * vec4(aPos, 1.0);
   }
 `;
 const fs2 = `
   precision mediump float;
   varying vec3 vN;
+  varying vec3 vPos;
   uniform vec3 uLight;
+  uniform vec3 uEye;
   uniform vec3 uBase;
   uniform float uAlpha;
   void main(){
     vec3 N = normalize(vN);
-    float d = max(0.0, dot(N, normalize(uLight)));
-    float a = 0.25 + 0.75*d;
-    gl_FragColor = vec4(uBase * a, uAlpha);
+    vec3 L = normalize(uLight);
+    vec3 V = normalize(uEye - vPos);
+    vec3 H = normalize(L + V);
+    float diff = max(0.0, dot(N, L));
+    float spec = pow(max(dot(N, H), 0.0), 48.0);
+    float ambient = 0.18;
+    vec3 color = uBase * (ambient + diff) + vec3(0.5) * spec;
+    gl_FragColor = vec4(color, uAlpha);
   }
 `;
 const prog2 = glCreateProgram(gl, vs2, fs2);
@@ -1967,6 +2105,7 @@ preview.aPos2 = gl.getAttribLocation(prog2, "aPos");
 preview.aNor = gl.getAttribLocation(prog2, "aNor");
 preview.uVP2 = gl.getUniformLocation(prog2, "uVP");
 preview.uLight = gl.getUniformLocation(prog2, "uLight");
+preview.uEye = gl.getUniformLocation(prog2, "uEye");
 preview.uBase = gl.getUniformLocation(prog2, "uBase");
 preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
 
@@ -1978,6 +2117,8 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   preview.meshBuf = gl.createBuffer();
   preview.meshTriPosBuf = gl.createBuffer();
   preview.meshTriNorBuf = gl.createBuffer();
+  preview.pathTriBuf = gl.createBuffer();
+  preview.pathTriColBuf = gl.createBuffer();
 
   gl.enableVertexAttribArray(preview.aPos);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
@@ -2033,6 +2174,7 @@ function updateVP(){
   if(preview.progSolid && preview.uVP2){
     gl.useProgram(preview.progSolid);
     gl.uniformMatrix4fv(preview.uVP2, false, vp);
+    if(preview.uEye) gl.uniform3f(preview.uEye, eye.x, eye.y, eye.z);
   }
   // restore line program by default
   gl.useProgram(preview.prog);
@@ -2196,7 +2338,10 @@ function setPreviewPath(machinePath){
   if(!gl) return;
   const pos = [];
   const col = [];
+  const triPos = [];
+  const triCol = [];
   let last = null;
+  const useHd = typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd";
 
   const pushVertex = (pt)=>{
     const X = pt.X ?? pt.x ?? 0;
@@ -2207,6 +2352,41 @@ function setPreviewPath(machinePath){
     col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
   };
 
+  const pushRibbon = (a, b, width)=>{
+    const ax = a.X ?? a.x ?? 0;
+    const ay = a.Y ?? a.y ?? 0;
+    const az = a.z ?? 0;
+    const bx = b.X ?? b.x ?? 0;
+    const by = b.Y ?? b.y ?? 0;
+    const bz = b.z ?? 0;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if(len <= 1e-6) return;
+    const half = width * 0.5;
+    const px = -dy / len * half;
+    const py = dx / len * half;
+    const aLx = ax + px;
+    const aLy = ay + py;
+    const aRx = ax - px;
+    const aRy = ay - py;
+    const bLx = bx + px;
+    const bLy = by + py;
+    const bRx = bx - px;
+    const bRy = by - py;
+    const rgba = getPreviewColor(b);
+    const pushTri = (x,y,z)=>{
+      triPos.push(x,y,z);
+      triCol.push(rgba[0], rgba[1], rgba[2], rgba[3]);
+    };
+    pushTri(aLx, aLy, az);
+    pushTri(aRx, aRy, az);
+    pushTri(bLx, bLy, bz);
+    pushTri(bLx, bLy, bz);
+    pushTri(aRx, aRy, az);
+    pushTri(bRx, bRy, bz);
+  };
+
   for(const p of machinePath){
     if(!p){
       last = null;
@@ -2215,6 +2395,10 @@ function setPreviewPath(machinePath){
     if(last){
       pushVertex(last);
       pushVertex(p);
+      if(useHd){
+        const width = Math.max(0.15, Number(p.meta?.lineWidth || previewLineSettings?.width || 0.6));
+        pushRibbon(last, p, width);
+      }
     }
     last = p;
   }
@@ -2222,6 +2406,9 @@ function setPreviewPath(machinePath){
   uploadBuffer(preview.buf, new Float32Array(pos));
   uploadBuffer(preview.colBuf, new Float32Array(col));
   preview.counts.path = pos.length / 3;
+  uploadBuffer(preview.pathTriBuf, new Float32Array(triPos));
+  uploadBuffer(preview.pathTriColBuf, new Float32Array(triCol));
+  preview.counts.pathTris = triPos.length / 3;
 
   // tool dot at last point
   const tool = new Float32Array(3);
@@ -2229,8 +2416,10 @@ function setPreviewPath(machinePath){
     tool[0]=last.X ?? last.x ?? 0;
     tool[1]=last.Y ?? last.y ?? 0;
     tool[2]=last.z ?? 0;
+    preview.toolPos = {x: tool[0], y: tool[1], z: tool[2]};
   } else {
     tool[0]=preview.bed.w/2; tool[1]=preview.bed.d/2; tool[2]=0;
+    preview.toolPos = {x: tool[0], y: tool[1], z: tool[2]};
   }
   uploadBuffer(preview.toolBuf, tool);
   preview.counts.tool = 1;
@@ -2412,6 +2601,14 @@ function drawPreviewLoop(){
   gl.viewport(0,0,glCanvas.width, glCanvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  const previewCtl = window.__GCODE_STUDIO_PREVIEW__;
+  if(previewCtl?.scrub?.playing && previewCtl?.scrub?.follow && preview.toolPos){
+    const target = preview.cam.target;
+    target.x += (preview.toolPos.x - target.x) * 0.08;
+    target.y += (preview.toolPos.y - target.y) * 0.08;
+    target.z += (preview.toolPos.z - target.z) * 0.08;
+  }
+
   updateVP();
 
   // Draw grid
@@ -2466,16 +2663,26 @@ if(previewMeshSettings.render !== "off"){
 
   const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim();
   const accent2 = getComputedStyle(document.body).getPropertyValue("--accent2").trim();
-  setColor(accent2, 0.35);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
-  gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(preview.aCol);
-  gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
-  gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+  if(typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd" && preview.counts.pathTris>2){
+    setColor(accent, 0.95);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriBuf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(preview.aCol);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriColBuf);
+    gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, preview.counts.pathTris);
+  }else{
+    setColor(accent2, 0.35);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
+    gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(preview.aCol);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
+    gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
+    if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
 
-  setColor(accent, 0.85);
-  if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+    setColor(accent, 0.85);
+    if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
+  }
 
   // Tool point
   setColor("rgba(255,255,255,0.9)", 0.9);
