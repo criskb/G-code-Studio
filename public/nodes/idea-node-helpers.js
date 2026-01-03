@@ -1,5 +1,6 @@
 (function(){
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
+window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
 
 const clamp = (v, min, max)=>Math.max(min, Math.min(max, v));
@@ -96,7 +97,7 @@ function simpleNode({
   };
 }
 
-window.GCODE_STUDIO.IDEA_NODE_UTILS = {
+const ideaNodeUtils = {
   clamp,
   numOr,
   parseNumberList,
@@ -107,4 +108,6 @@ window.GCODE_STUDIO.IDEA_NODE_UTILS = {
   simpleReport,
   simpleNode
 };
+window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK = window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
+window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 })();

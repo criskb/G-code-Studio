@@ -1086,6 +1086,19 @@ function portRow(nodeId, portName, portType, dir){
     return anyDot || null;
   }
 
+  function findOutputDotAt(x, y){
+    const t = document.elementFromPoint(x, y);
+    if(!t) return null;
+    if(t.classList?.contains("dot") && t.dataset?.dir==="out") return t;
+    const rowOut = t.closest?.(".portRow.out");
+    if(rowOut){
+      const d = rowOut.querySelector?.(".dot.out");
+      if(d) return d;
+    }
+    const anyDot = t.closest?.(".dot.out");
+    return anyDot || null;
+  }
+
   function beginLinkDrag(e){
     e.stopPropagation();
     e.preventDefault();
@@ -1093,12 +1106,11 @@ function portRow(nodeId, portName, portType, dir){
 
     if(dir === "in"){
       disconnectInput();
-      return;
     }
 
     ensureLinks();
-    g.linking = { pointerId: e.pointerId, fromNode: nodeId, fromPort: portName, fromType: portType, x: e.clientX, y: e.clientY };
-    setLinkTargetHighlights(portType);
+    g.linking = { pointerId: e.pointerId, fromNode: nodeId, fromPort: portName, fromType: portType, fromDir: dir, x: e.clientX, y: e.clientY };
+    setLinkTargetHighlights(portType, dir);
     requestLinkRedraw();
 
     try{ dot.setPointerCapture(e.pointerId); }catch(_){}
@@ -1116,26 +1128,51 @@ function portRow(nodeId, portName, portType, dir){
       ev.preventDefault();
       try{ dot.releasePointerCapture(ev.pointerId); }catch(_){}
 
-      const inDot = findInputDotAt(ev.clientX, ev.clientY);
-      if(inDot){
-        const toNode = inDot.dataset.nodeId;
-        const toPort = inDot.dataset.portName;
-        const toType = inDot.dataset.portType;
+      if(g.linking.fromDir === "out"){
+        const inDot = findInputDotAt(ev.clientX, ev.clientY);
+        if(inDot){
+          const toNode = inDot.dataset.nodeId;
+          const toPort = inDot.dataset.portName;
+          const toType = inDot.dataset.portType;
 
-        if(!isTypeCompatible(toType, g.linking.fromType)){
-          toast("Type mismatch");
-        } else {
-          const linkType = normalizePortType(g.linking.fromType);
-          const links = ensureLinks();
-          const existing = links.findIndex(L=>L?.to?.node===toNode && L?.to?.port===toPort);
-          if(existing>=0) links.splice(existing, 1);
-          links.push({
-            id: uid(),
-            from: { node: g.linking.fromNode, port: g.linking.fromPort, type: linkType },
-            to:   { node: toNode,              port: toPort,              type: linkType }
-          });
-          saveState(); markDirtyAuto();
-          toast("Connected");
+          if(!isTypeCompatible(toType, g.linking.fromType)){
+            toast("Type mismatch");
+          } else {
+            const linkType = normalizePortType(g.linking.fromType);
+            const links = ensureLinks();
+            const existing = links.findIndex(L=>L?.to?.node===toNode && L?.to?.port===toPort);
+            if(existing>=0) links.splice(existing, 1);
+            links.push({
+              id: uid(),
+              from: { node: g.linking.fromNode, port: g.linking.fromPort, type: linkType },
+              to:   { node: toNode,              port: toPort,              type: linkType }
+            });
+            saveState(); markDirtyAuto();
+            toast("Connected");
+          }
+        }
+      } else {
+        const outDot = findOutputDotAt(ev.clientX, ev.clientY);
+        if(outDot){
+          const fromNode = outDot.dataset.nodeId;
+          const fromPort = outDot.dataset.portName;
+          const fromType = outDot.dataset.portType;
+
+          if(!isTypeCompatible(fromType, g.linking.fromType)){
+            toast("Type mismatch");
+          } else {
+            const linkType = normalizePortType(g.linking.fromType);
+            const links = ensureLinks();
+            const existing = links.findIndex(L=>L?.to?.node===g.linking.fromNode && L?.to?.port===g.linking.fromPort);
+            if(existing>=0) links.splice(existing, 1);
+            links.push({
+              id: uid(),
+              from: { node: fromNode,           port: fromPort,           type: linkType },
+              to:   { node: g.linking.fromNode, port: g.linking.fromPort, type: linkType }
+            });
+            saveState(); markDirtyAuto();
+            toast("Connected");
+          }
         }
       }
 
@@ -1218,9 +1255,12 @@ const TYPE_COLORS = {
 function colorForType(t){
   return TYPE_COLORS[t] || (getComputedStyle(document.body).getPropertyValue("--accent").trim() || "rgba(66,255,179,0.95)");
 }
-function setLinkTargetHighlights(fromType){
+function setLinkTargetHighlights(fromType, fromDir){
   document.body.classList.add("linking");
-  const dots = nodesLayer.querySelectorAll(".dot.in");
+  document.body.classList.remove("linking-from-in", "linking-from-out");
+  document.body.classList.add(fromDir === "in" ? "linking-from-in" : "linking-from-out");
+  const targetDir = fromDir === "in" ? "out" : "in";
+  const dots = nodesLayer.querySelectorAll(`.dot.${targetDir}`);
   dots.forEach(d=>{
     const ok = isTypeCompatible(d.dataset.portType, fromType);
     d.classList.toggle("canDrop", ok);
@@ -1229,7 +1269,8 @@ function setLinkTargetHighlights(fromType){
 }
 function clearLinkTargetHighlights(){
   document.body.classList.remove("linking");
-  const dots = nodesLayer.querySelectorAll(".dot.in");
+  document.body.classList.remove("linking-from-in", "linking-from-out");
+  const dots = nodesLayer.querySelectorAll(".dot");
   dots.forEach(d=>{
     d.classList.remove("canDrop","cantDrop");
   });

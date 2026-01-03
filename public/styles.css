@@ -378,9 +378,19 @@
 .dot[data-port-type="rules"]{ background: rgba(190, 120, 255, 0.85); box-shadow: 0 0 0 1px rgba(190,120,255,0.35) inset; }
 .dot[data-port-type="profile"]{ background: rgba(85, 255, 175, 0.85); box-shadow: 0 0 0 1px rgba(85,255,175,0.35) inset; }
 .dot[data-port-type="number"]{ background: rgba(255, 255, 255, 0.72); }
-body.linking .dot.in{ opacity: 0.22; }
-body.linking .dot.in.canDrop{ opacity: 1; filter: drop-shadow(0 0 6px rgba(255,255,255,0.28)); transform: scale(1.05); }
-body.linking .dot.in.cantDrop{ opacity: 0.10; }
+body.linking-from-out .dot.in,
+body.linking-from-in .dot.out{ opacity: 0.22; }
+body.linking-from-out .dot.in.canDrop,
+body.linking-from-in .dot.out.canDrop{
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.35));
+  transform: scale(1.2);
+  outline: 2px solid rgba(255,255,255,0.9);
+  outline-offset: 1px;
+  border-width: 2px;
+}
+body.linking-from-out .dot.in.cantDrop,
+body.linking-from-in .dot.out.cantDrop{ opacity: 0.10; }
     .dot.out{ background: rgba(66,255,179,0.16); border-color: rgba(66,255,179,0.28); }
     .dot.in{ background: rgba(105,166,255,0.12); border-color: rgba(105,166,255,0.22); }
     .dot:hover{ filter:brightness(1.05); }
