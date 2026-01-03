@@ -1122,16 +1122,17 @@ function portRow(nodeId, portName, portType, dir){
         const toPort = inDot.dataset.portName;
         const toType = inDot.dataset.portType;
 
-        if(toType !== g.linking.fromType){
+        if(!isTypeCompatible(toType, g.linking.fromType)){
           toast("Type mismatch");
         } else {
+          const linkType = normalizePortType(g.linking.fromType);
           const links = ensureLinks();
           const existing = links.findIndex(L=>L?.to?.node===toNode && L?.to?.port===toPort);
           if(existing>=0) links.splice(existing, 1);
           links.push({
             id: uid(),
-            from: { node: g.linking.fromNode, port: g.linking.fromPort, type: g.linking.fromType },
-            to:   { node: toNode,              port: toPort,              type: toType }
+            from: { node: g.linking.fromNode, port: g.linking.fromPort, type: linkType },
+            to:   { node: toNode,              port: toPort,              type: linkType }
           });
           saveState(); markDirtyAuto();
           toast("Connected");
@@ -1198,6 +1199,15 @@ function requestLinkRedraw(){
 }
 
 /* ---- Link type coloring + target highlights ---- */
+const TYPE_ALIASES = {
+  meshArray: "mesh[]"
+};
+function normalizePortType(type){
+  return TYPE_ALIASES[type] || type;
+}
+function isTypeCompatible(a, b){
+  return normalizePortType(a) === normalizePortType(b);
+}
 const TYPE_COLORS = {
   path:   "rgba(106,166,255,0.92)",
   mesh:   "rgba(255,176,82,0.92)",
@@ -1212,7 +1222,7 @@ function setLinkTargetHighlights(fromType){
   document.body.classList.add("linking");
   const dots = nodesLayer.querySelectorAll(".dot.in");
   dots.forEach(d=>{
-    const ok = (d.dataset.portType === fromType);
+    const ok = isTypeCompatible(d.dataset.portType, fromType);
     d.classList.toggle("canDrop", ok);
     d.classList.toggle("cantDrop", !ok);
   });
@@ -1632,7 +1642,11 @@ function sanitizeImported(obj){
     const defA = NODE_DEFS[a.type], defB = NODE_DEFS[b.type];
     const out = defA.outputs?.find(p=>p.name===L.from.port);
     const inp = defB.inputs?.find(p=>p.name===L.to.port);
-    return out && inp && out.type===inp.type;
+    if(!out || !inp || !isTypeCompatible(out.type, inp.type)) return false;
+    const normalized = normalizePortType(out.type);
+    L.from.type = normalized;
+    L.to.type = normalized;
+    return true;
   });
   return s;
 }
