@@ -13,6 +13,9 @@
       --accent2:#6aa6ff;
       --warn: #ffd166;
       --bad: #ff5d73;
+      --graph-dot-size: 28px;
+      --graph-dot-opacity: 0.18;
+      --graph-grid-size: 32px;
       --shadow: 0 18px 60px rgba(0,0,0,0.55);
       --radius: 16px;
       --radius2: 12px;
@@ -40,10 +43,7 @@
     *{ box-sizing:border-box; }
     html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); overflow:hidden; }
     body{
-      background:
-        radial-gradient(1100px 700px at 18% 10%, rgba(66,255,179,0.10), transparent 58%),
-        radial-gradient(900px 600px at 85% 30%, rgba(105,166,255,0.10), transparent 60%),
-        linear-gradient(180deg, var(--bg0), var(--bg1));
+      background: var(--bg0);
       user-select:none;
     }
 
@@ -244,20 +244,72 @@
       position:absolute; inset:0;
       border-radius:var(--radius);
       overflow:hidden;
-      background:
-        radial-gradient(1200px 700px at 30% 20%, rgba(255,255,255,0.04), transparent 55%),
-        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+      background: var(--bg0);
     }
     .graphBg{
       position:absolute; inset:0;
-      background-image:
-        radial-gradient(circle at 1px 1px, rgba(255,255,255,0.14) 1px, transparent 0);
-      background-size: 28px 28px;
-      opacity: 0.18;
+      background-size: var(--graph-dot-size) var(--graph-dot-size);
+      opacity: var(--graph-dot-opacity);
       transform-origin: 0 0;
       pointer-events:none;
     }
-    [data-theme="light"] .graphBg{ opacity: 0.22; }
+    [data-theme="light"] .graphBg{ opacity: var(--graph-dot-opacity); }
+    .graphBg.pattern-dots{
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(255,255,255,0.14) 1px, transparent 0);
+    }
+    .graphBg.pattern-grid{
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.14) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.14) 1px, transparent 1px);
+      background-size: var(--graph-grid-size) var(--graph-grid-size);
+    }
+    .graphBg.pattern-crosshatch{
+      background-image:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.12), rgba(255,255,255,0.12) 1px, transparent 1px, transparent calc(var(--graph-grid-size) / 2)),
+        repeating-linear-gradient(-45deg, rgba(255,255,255,0.12), rgba(255,255,255,0.12) 1px, transparent 1px, transparent calc(var(--graph-grid-size) / 2));
+      background-size: var(--graph-grid-size) var(--graph-grid-size);
+    }
+    .graphBg.pattern-diagonal{
+      background-image:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.14), rgba(255,255,255,0.14) 1px, transparent 1px, transparent var(--graph-grid-size));
+      background-size: var(--graph-grid-size) var(--graph-grid-size);
+    }
+    .graphBg.pattern-squares{
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px);
+      background-size: calc(var(--graph-grid-size) / 2) calc(var(--graph-grid-size) / 2);
+    }
+    .graphBg.pattern-checker{
+      background-image:
+        linear-gradient(45deg, rgba(255,255,255,0.12) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255,255,255,0.12) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.12) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.12) 75%);
+      background-size: var(--graph-grid-size) var(--graph-grid-size);
+      background-position:
+        0 0,
+        0 calc(var(--graph-grid-size) / 2),
+        calc(var(--graph-grid-size) / 2) calc(var(--graph-grid-size) / -2),
+        calc(var(--graph-grid-size) / -2) 0;
+    }
+    .graphBg.pattern-diamond{
+      background-image:
+        linear-gradient(135deg, rgba(255,255,255,0.12) 1px, transparent 1px),
+        linear-gradient(225deg, rgba(255,255,255,0.12) 1px, transparent 1px),
+        linear-gradient(315deg, rgba(255,255,255,0.12) 1px, transparent 1px),
+        linear-gradient(45deg, rgba(255,255,255,0.12) 1px, transparent 1px);
+      background-size: var(--graph-grid-size) var(--graph-grid-size);
+      background-position:
+        0 0,
+        0 calc(var(--graph-grid-size) / 2),
+        calc(var(--graph-grid-size) / 2) calc(var(--graph-grid-size) / -2),
+        calc(var(--graph-grid-size) / -2) 0;
+    }
+    .graphBg.pattern-none{
+      background-image: none;
+    }
 
     canvas#linkCanvas{
       position:absolute; inset:0;
@@ -1086,6 +1138,9 @@ body.light .toggle .knob{
 }
 [data-theme="light"] .npBadge{
   background: rgba(0,0,0,0.05);
+}
+.npItem.isDisabled{
+  opacity: 0.55;
 }
 
 
