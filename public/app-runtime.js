@@ -467,7 +467,14 @@ function applyGraphBgSettings(){
   if(!graphBg) return;
   const opts = appSettings.graphBg || {};
   const pattern = opts.pattern || "dots";
-  graphBg.classList.remove("pattern-dots", "pattern-grid", "pattern-none");
+  graphBg.classList.remove(
+    "pattern-dots",
+    "pattern-grid",
+    "pattern-crosshatch",
+    "pattern-diagonal",
+    "pattern-squares",
+    "pattern-none"
+  );
   graphBg.classList.add(`pattern-${pattern}`);
   const root = document.documentElement;
   root.style.setProperty("--graph-dot-size", `${opts.dotSize ?? 28}px`);
