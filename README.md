@@ -5,6 +5,11 @@ G-code Studio is a node-graph workspace for building toolpaths, rules, and print
 
 ![G-code Studio settings overlay](reader-assets/settings-overview.svg)
 
+## Screenshots
+![G-code Studio workspace overview](reader-assets/gcode-studio-main.svg)
+
+![Node picker and library](reader-assets/gcode-studio-node-picker.svg)
+
 ## Quick start
 1. Launch the app (served by `server.js` or the launch scripts below).
 2. Press **Space** to open the node picker and add nodes.
