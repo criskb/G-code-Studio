@@ -1,7 +1,10 @@
 (function(){
-window.GCODE_STUDIO = window.GCODE_STUDIO || {};
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
-window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
+const ensureIdeaUtils = (studio, ideaNodeUtils)=>{
+  if(!studio) return;
+  studio.IDEA_NODE_UTILS_FALLBACK = studio.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
+  studio.IDEA_NODE_UTILS = studio.IDEA_NODE_UTILS || studio.IDEA_NODE_UTILS_FALLBACK;
+  studio.NODE_DEFS = studio.NODE_DEFS || {};
+};
 
 const clamp = (v, min, max)=>Math.max(min, Math.min(max, v));
 const numOr = (v, fallback)=>Number.isFinite(Number(v)) ? Number(v) : fallback;
@@ -108,6 +111,17 @@ const ideaNodeUtils = {
   simpleReport,
   simpleNode
 };
-window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK = window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
+let studioRef = window.GCODE_STUDIO || {};
+ensureIdeaUtils(studioRef, ideaNodeUtils);
+Object.defineProperty(window, "GCODE_STUDIO", {
+  configurable: true,
+  get(){
+    return studioRef;
+  },
+  set(next){
+    studioRef = next || {};
+    ensureIdeaUtils(studioRef, ideaNodeUtils);
+  }
+});
+window.GCODE_STUDIO = studioRef;
 })();
