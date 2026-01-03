@@ -1,0 +1,36 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="G-code Studio workspace overview">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1418" />
+      <stop offset="100%" stop-color="#111820" />
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a212a" />
+      <stop offset="100%" stop-color="#141b22" />
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="900" fill="url(#bg)" />
+  <rect x="24" y="24" width="1352" height="72" rx="18" fill="#0f151b" stroke="#27303a" />
+  <text x="60" y="68" fill="#e6edf3" font-family="Inter, system-ui" font-size="24" font-weight="600">G-code Studio</text>
+  <text x="60" y="92" fill="#7f8b99" font-family="Inter, system-ui" font-size="14">Procedural node graph · SVG → toolpath · rules → G-code</text>
+
+  <rect x="24" y="120" width="1352" height="744" rx="24" fill="#0c1116" stroke="#202833" />
+  <circle cx="140" cy="280" r="110" fill="url(#panel)" stroke="#2b3440" />
+  <rect x="280" y="210" width="320" height="220" rx="16" fill="url(#panel)" stroke="#2b3440" />
+  <rect x="640" y="220" width="320" height="220" rx="16" fill="url(#panel)" stroke="#2b3440" />
+  <rect x="960" y="260" width="360" height="260" rx="16" fill="url(#panel)" stroke="#2b3440" />
+
+  <text x="300" y="248" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Path</text>
+  <text x="660" y="258" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Transform</text>
+  <text x="980" y="298" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Preview</text>
+
+  <path d="M 520 320 L 640 320" stroke="#3aa675" stroke-width="4" stroke-linecap="round" />
+  <path d="M 960 360 L 1080 360" stroke="#3aa675" stroke-width="4" stroke-linecap="round" />
+
+  <rect x="280" y="520" width="260" height="160" rx="16" fill="url(#panel)" stroke="#2b3440" />
+  <rect x="580" y="520" width="260" height="160" rx="16" fill="url(#panel)" stroke="#2b3440" />
+  <rect x="880" y="520" width="260" height="160" rx="16" fill="url(#panel)" stroke="#2b3440" />
+  <text x="300" y="552" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Printer</text>
+  <text x="600" y="552" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Rules</text>
+  <text x="900" y="552" fill="#d3dae3" font-family="Inter, system-ui" font-size="16" font-weight="600">Export</text>
+</svg>

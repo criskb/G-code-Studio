@@ -5,7 +5,7 @@ window.GCODE_STUDIO.NODE_DEFS['Image'] = {
   tag:"generator",
   desc:"Load an image → generate a heightmap relief (front-lit lithophane style) + optional swap-by-layer filament plan.",
   inputs:[{name:"profile", type:"profile"}],
-  outputs:[{name:"mesh", type:"mesh"},{name:"rules", type:"rules"}],
+  outputs:[{name:"mesh", type:"mesh"},{name:"rules", type:"rules"},{name:"image", type:"image"}],
   initData:()=>({
     imgB64:"",
     maxRes:180,
@@ -313,6 +313,6 @@ window.GCODE_STUDIO.NODE_DEFS['Image'] = {
       }
       rules = { filamentChanges: changes, filamentCmd: d.filamentCmd || "M600" };
     }
-    return { mesh, rules };
+    return { mesh, rules, image: d.imgB64 || null };
   }
 };
