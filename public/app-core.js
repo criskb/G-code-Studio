@@ -110,7 +110,7 @@ function simpleNode({
     evaluate
   };
 }
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || {
+const ideaNodeUtils = {
   clamp,
   numOr,
   parseNumberList,
@@ -121,6 +121,8 @@ window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || {
   simpleReport,
   simpleNode
 };
+window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK = window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
+window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
 const downloadText = (filename, text)=>{
   const blob = new Blob([text], {type:"text/plain"});
   const url = URL.createObjectURL(blob);
