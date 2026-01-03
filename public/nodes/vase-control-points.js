@@ -12,7 +12,13 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     wall:1.2,
     segments:160,
     // profile control points (u in 0..1, r multiplier)
-    points:[ {u:0.0, r:1.0}, {u:0.15, r:1.05}, {u:0.45, r:0.9}, {u:0.75, r:1.12}, {u:1.0, r:0.85} ],
+    points:[
+      {u:0.0, r:1.0, type:"smooth", hInU:-0.05, hInR:0.0, hOutU:0.05, hOutR:0.0},
+      {u:0.15, r:1.05, type:"smooth", hInU:-0.05, hInR:0.0, hOutU:0.05, hOutR:0.0},
+      {u:0.45, r:0.9, type:"smooth", hInU:-0.05, hInR:0.0, hOutU:0.05, hOutR:0.0},
+      {u:0.75, r:1.12, type:"smooth", hInU:-0.05, hInR:0.0, hOutU:0.05, hOutR:0.0},
+      {u:1.0, r:0.85, type:"smooth", hInU:-0.05, hInR:0.0, hOutU:0.05, hOutR:0.0}
+    ],
     smooth:0.35,
     bedAlign:true,
     // spiral wall
@@ -32,6 +38,16 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     c.width=420; c.height=630;
     pad.appendChild(c);
     mount.appendChild(pad);
+
+    function normalizePoint(p){
+      if(!p) return {u:0, r:1, type:"smooth", hInU:0, hInR:0, hOutU:0, hOutR:0};
+      if(!p.type) p.type = "smooth";
+      if(!Number.isFinite(p.hInU)) p.hInU = -0.05;
+      if(!Number.isFinite(p.hOutU)) p.hOutU = 0.05;
+      if(!Number.isFinite(p.hInR)) p.hInR = 0;
+      if(!Number.isFinite(p.hOutR)) p.hOutR = 0;
+      return p;
+    }
 
     function draw(){
       const ctx=c.getContext("2d");
@@ -60,7 +76,7 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       ctx.restore();
 
       // curve
-      const pts = (d.points||[]).slice().sort((a,b)=>a.u-b.u);
+      const pts = (d.points||[]).map(normalizePoint).slice().sort((a,b)=>a.u-b.u);
       const toXY=(p)=>{
         const x = gx + (p.r*0.9)*gw; // r roughly 0..1.4
         const y = gy + (1-p.u)*gh;
@@ -85,10 +101,30 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       for(let i=0;i<pts.length;i++){
         const p=pts[i];
         const q=toXY(p);
+        if(p.type === "smooth"){
+          const inHandle = toXY({u: p.u + p.hInU, r: p.r + p.hInR});
+          const outHandle = toXY({u: p.u + p.hOutU, r: p.r + p.hOutR});
+          ctx.strokeStyle="rgba(0,255,160,0.35)";
+          ctx.lineWidth=1;
+          ctx.beginPath();
+          ctx.moveTo(inHandle.x, inHandle.y);
+          ctx.lineTo(q.x, q.y);
+          ctx.lineTo(outHandle.x, outHandle.y);
+          ctx.stroke();
+
+          ctx.fillStyle="rgba(0,255,160,0.65)";
+          ctx.beginPath(); ctx.arc(inHandle.x, inHandle.y, 4, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(outHandle.x, outHandle.y, 4, 0, Math.PI*2); ctx.fill();
+        }
         ctx.fillStyle="rgba(0,255,160,0.9)";
         ctx.beginPath(); ctx.arc(q.x,q.y,6,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle="rgba(0,0,0,0.35)";
         ctx.stroke();
+        if(i === (d.selectedIndex ?? -1)){
+          ctx.strokeStyle="rgba(255,255,255,0.9)";
+          ctx.lineWidth=2;
+          ctx.beginPath(); ctx.arc(q.x,q.y,8,0,Math.PI*2); ctx.stroke();
+        }
       }
 
       ctx.fillStyle="rgba(255,255,255,0.55)";
@@ -105,24 +141,31 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       for(; i<pts.length; i++){
         if(u<=pts[i].u) break;
       }
-      const p0=pts[i-1], p1=pts[i];
+      const p0=normalizePoint(pts[i-1]), p1=normalizePoint(pts[i]);
       const t=(u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
       let r = p0.r + (p1.r-p0.r)*t;
 
       const s = clamp(Number(smooth||0), 0, 1);
-      if(s>0){
-        const pPrev = pts[Math.max(0,i-2)];
-        const pNext = pts[Math.min(pts.length-1,i+1)];
-        const rAlt = cubicHermite(u, pPrev, p0, p1, pNext);
-        r = r*(1-s) + rAlt*s;
+      const pPrev = normalizePoint(pts[Math.max(0,i-2)]);
+      const pNext = normalizePoint(pts[Math.min(pts.length-1,i+1)]);
+      const rHermite = cubicHermite(u, pPrev, p0, p1, pNext);
+      const hasHandles = hasHandle(p0) || hasHandle(p1);
+      if(hasHandles){
+        r = rHermite;
+      }else if(s>0){
+        r = r*(1-s) + rHermite*s;
       }
       return clamp(r, 0.05, 2.0);
     }
     function cubicHermite(u, pPrev, p0, p1, pNext){
+      if((p0.type === "sharp" || p1.type === "sharp") && !hasHandle(p0) && !hasHandle(p1)){
+        const t = (u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
+        return p0.r + (p1.r - p0.r) * t;
+      }
       // Map u to segment space
       const t = (u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
-      const m0 = (p1.r - pPrev.r) / Math.max(1e-9, (p1.u - pPrev.u));
-      const m1 = (pNext.r - p0.r) / Math.max(1e-9, (pNext.u - p0.u));
+      const m0 = handleSlope(p0, pPrev, p1, "out");
+      const m1 = handleSlope(p1, p0, pNext, "in");
       const h00 = (2*t*t*t - 3*t*t + 1);
       const h10 = (t*t*t - 2*t*t + t);
       const h01 = (-2*t*t*t + 3*t*t);
@@ -130,17 +173,42 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       const du = (p1.u - p0.u);
       return h00*p0.r + h10*m0*du + h01*p1.r + h11*m1*du;
     }
+    function handleSlope(p, pPrev, pNext, dir){
+      const uOff = dir === "out" ? p.hOutU : p.hInU;
+      const rOff = dir === "out" ? p.hOutR : p.hInR;
+      if(Number.isFinite(uOff) && Math.abs(uOff) > 1e-6){
+        return rOff / uOff;
+      }
+      const du = (pNext.u - pPrev.u);
+      if(Math.abs(du) < 1e-6) return 0;
+      return (pNext.r - pPrev.r) / du;
+    }
+    function hasHandle(p){
+      return Math.abs(p.hInU) > 1e-6 || Math.abs(p.hInR) > 1e-6
+        || Math.abs(p.hOutU) > 1e-6 || Math.abs(p.hOutR) > 1e-6;
+    }
 
-    function getPtsSorted(){ return (d.points||[]).slice().sort((a,b)=>a.u-b.u); }
+    function getPtsSorted(){ return (d.points||[]).map(normalizePoint).slice().sort((a,b)=>a.u-b.u); }
 
     // interaction: drag
     let dragIndex=-1;
+    let dragHandle=null;
     const hitRadius=10;
     function pickPoint(mx,my){
       const pts=getPtsSorted();
       const px=18, py=18;
       const gx=px, gy=py, gw=c.width-2*px, gh=c.height-2*py;
       const toXY=(p)=>({x: gx + (p.r*0.9)*gw, y: gy + (1-p.u)*gh});
+      for(let i=0;i<pts.length;i++){
+        const p = pts[i];
+        if(p.type !== "smooth") continue;
+        const inHandle = toXY({u: p.u + p.hInU, r: p.r + p.hInR});
+        const outHandle = toXY({u: p.u + p.hOutU, r: p.r + p.hOutR});
+        const din = (mx-inHandle.x)*(mx-inHandle.x) + (my-inHandle.y)*(my-inHandle.y);
+        const dout = (mx-outHandle.x)*(mx-outHandle.x) + (my-outHandle.y)*(my-outHandle.y);
+        if(din < hitRadius*hitRadius) return { index: d.points.findIndex(p2=>p2.u===p.u && p2.r===p.r), handle: "in" };
+        if(dout < hitRadius*hitRadius) return { index: d.points.findIndex(p2=>p2.u===p.u && p2.r===p.r), handle: "out" };
+      }
       let best=-1, bd=1e9;
       for(let i=0;i<pts.length;i++){
         const q=toXY(pts[i]);
@@ -151,7 +219,7 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       if(best<0) return -1;
       // map to original array index (by unique u+r)
       const orig = d.points.findIndex(p=>p.u===pts[best].u && p.r===pts[best].r);
-      return orig>=0 ? orig : best;
+      return { index: (orig>=0 ? orig : best), handle: "point" };
     }
     function canvasToUR(mx,my){
       const px=18, py=18;
@@ -165,10 +233,13 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       const rect=c.getBoundingClientRect();
       const mx=(e.clientX-rect.left)*(c.width/rect.width);
       const my=(e.clientY-rect.top)*(c.height/rect.height);
-      const idx=pickPoint(mx,my);
-      if(idx>=0){
-        dragIndex=idx;
+      const hit=pickPoint(mx,my);
+      if(hit && hit.index>=0){
+        dragIndex=hit.index;
+        dragHandle=hit.handle;
+        d.selectedIndex = hit.index;
         e.preventDefault();
+        draw();
       }
     });
     window.addEventListener("mousemove", (e)=>{
@@ -177,18 +248,35 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       const mx=(e.clientX-rect.left)*(c.width/rect.width);
       const my=(e.clientY-rect.top)*(c.height/rect.height);
       const ur=canvasToUR(mx,my);
-      d.points[dragIndex].u = ur.u;
-      d.points[dragIndex].r = ur.r;
+      const p = normalizePoint(d.points[dragIndex]);
+      if(dragHandle === "point"){
+        p.u = ur.u;
+        p.r = ur.r;
+      }else if(dragHandle === "in"){
+        p.hInU = ur.u - p.u;
+        p.hInR = ur.r - p.r;
+        if(p.type === "smooth"){
+          p.hOutU = -p.hInU;
+          p.hOutR = -p.hInR;
+        }
+      }else if(dragHandle === "out"){
+        p.hOutU = ur.u - p.u;
+        p.hOutR = ur.r - p.r;
+        if(p.type === "smooth"){
+          p.hInU = -p.hOutU;
+          p.hInR = -p.hOutR;
+        }
+      }
       saveState(); markDirtyAuto(); draw();
     });
-    window.addEventListener("mouseup", ()=>{ dragIndex=-1; });
+    window.addEventListener("mouseup", ()=>{ dragIndex=-1; dragHandle=null; });
 
     c.addEventListener("dblclick", (e)=>{
       const rect=c.getBoundingClientRect();
       const mx=(e.clientX-rect.left)*(c.width/rect.width);
       const my=(e.clientY-rect.top)*(c.height/rect.height);
       const ur=canvasToUR(mx,my);
-      d.points.push({u:ur.u, r:ur.r});
+      d.points.push({u:ur.u, r:ur.r, type:"smooth", hInU:-0.05, hInR:0, hOutU:0.05, hOutR:0});
       saveState(); markDirtyAuto(); draw();
     });
     c.addEventListener("contextmenu", (e)=>{
@@ -196,9 +284,9 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       const rect=c.getBoundingClientRect();
       const mx=(e.clientX-rect.left)*(c.width/rect.width);
       const my=(e.clientY-rect.top)*(c.height/rect.height);
-      const idx=pickPoint(mx,my);
-      if(idx>=0 && (d.points||[]).length>2){
-        d.points.splice(idx,1);
+      const hit=pickPoint(mx,my);
+      if(hit && hit.index>=0 && (d.points||[]).length>2){
+        d.points.splice(hit.index,1);
         saveState(); markDirtyAuto(); draw();
       }
     });
@@ -210,6 +298,31 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     mount.appendChild(field("Revolve segments", elNumber(d.segments??160, v=>{ d.segments=v; markDirtyAuto(); saveState(); }, 1)));
     mount.appendChild(field("Smooth", elNumber(d.smooth??0.35, v=>{ d.smooth=v; markDirtyAuto(); saveState(); draw(); }, 0.01)));
     mount.appendChild(field("Bed align", elToggle(!!d.bedAlign, v=>{ d.bedAlign=!!v; markDirtyAuto(); saveState(); })));
+
+    const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
+    const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
+    const selLabel = document.createElement("div");
+    selLabel.className = "hint";
+    selLabel.textContent = selectedPoint ? `Selected point #${selected + 1}` : "Select a control point to edit handles.";
+    mount.appendChild(selLabel);
+    if(selectedPoint){
+      mount.appendChild(field("Point type", elSelect(selectedPoint.type, [["smooth","Smooth"],["sharp","Sharp"]], v=>{
+        selectedPoint.type = v;
+        if(v === "sharp"){
+          selectedPoint.hInU = 0; selectedPoint.hInR = 0;
+          selectedPoint.hOutU = 0; selectedPoint.hOutR = 0;
+        }
+        saveState(); markDirtyAuto(); draw();
+      })));
+      mount.appendChild(grid2([
+        field("Handle in U", elNumber(selectedPoint.hInU, v=>{ selectedPoint.hInU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle in R", elNumber(selectedPoint.hInR, v=>{ selectedPoint.hInR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+      mount.appendChild(grid2([
+        field("Handle out U", elNumber(selectedPoint.hOutU, v=>{ selectedPoint.hOutU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle out R", elNumber(selectedPoint.hOutR, v=>{ selectedPoint.hOutR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+    }
 
     mount.appendChild(dividerTiny());
     mount.appendChild(field("Output spiral wall path", elToggle(!!d.outputSpiralPath, v=>{ d.outputSpiralPath=!!v; markDirtyAuto(); saveState(); })));
