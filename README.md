@@ -1,19 +1,22 @@
 # G-code Studio Reader
 
 ## Overview
-G-code Studio is a node-graph workspace for building toolpaths, rules, and printer output in a procedural workflow. It combines a searchable node library, a graph canvas, and a preview panel so you can move from SVG or mesh inputs to G-code exports in one flow.
-=======
-G-code Studio is a node-graph workspace for building toolpaths, rules, and printer output in a FullControl-inspired workflow. It combines a searchable node library, a graph canvas, and a preview panel so you can move from SVG or mesh inputs to G-code exports in one flow.
->>>>>>> origin/main
+G-code Studio is a node-graph workspace for building toolpaths, rules, and printer output in a FullControl-inspired procedural workflow. It combines a searchable node library, a graph canvas, and a preview panel so you can move from SVG or mesh inputs to G-code exports in one flow. The node catalog spans generators, modifiers, planners, analyzers, and visualizers so you can assemble end-to-end pipelines inside a single graph.
 
 ![G-code Studio settings overlay](reader-assets/settings-overview.svg)
 
 ## Quick start
-1. Launch the app (served by `server.js`).
+1. Launch the app (served by `server.js` or the launch scripts below).
 2. Press **Space** to open the node picker and add nodes.
 3. Wire nodes from left to right: **Path → Modifiers → Rules → Printer → Export**.
 4. Click **Run graph** to generate toolpaths and preview them.
 5. Use **Download .gcode** to export the output.
+
+## Launch scripts
+- **macOS:** `./launch-macos.sh`
+- **Windows:** `launch-windows.bat`
+
+Both scripts start the local server and print the URL to open in your browser.
 
 ## Settings
 Open **Settings** in the top bar to personalize the workspace.
