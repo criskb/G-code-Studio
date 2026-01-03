@@ -4,8 +4,12 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
   title:"Preview",
   tag:"ui",
   desc:"Docked preview for toolpath + mesh rendering.",
-  inputs: [],
-  outputs: [],
+  inputs: [
+    {name:"mesh", type:"mesh"},
+    {name:"toolpath", type:"toolpath"},
+    {name:"preview", type:"preview"}
+  ],
+  outputs: [{name:"preview", type:"preview"}],
   defaultW: 560,
   defaultH: 720,
   initData: ()=>({}),
@@ -35,6 +39,18 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
     stopGraphGestures(wrap.querySelector("#btnFitPreview"));
 
     try{ schedulePreviewUpdate(); }catch(_){ }
+  },
+  evaluate:(node, ctx)=>{
+    const meshIn = ctx.getInput(node.id, "mesh");
+    const toolpathIn = ctx.getInput(node.id, "toolpath");
+    const previewIn = ctx.getInput(node.id, "preview");
+    const mesh = meshIn?.mesh || meshIn?.out || meshIn || null;
+    const toolpath = toolpathIn?.toolpath || toolpathIn?.out || toolpathIn || null;
+    const base = (previewIn && typeof previewIn === "object") ? {...previewIn} : {};
+    if(mesh) base.mesh = mesh;
+    if(toolpath) base.toolpath = toolpath;
+    const hasPayload = Object.keys(base).length > 0;
+    return { preview: hasPayload ? base : null };
   },
   defaultSize: { w: 560, h: 720 }
 };
