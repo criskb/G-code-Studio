@@ -391,6 +391,7 @@ function nodeCat(def){
   if(tag==="mesh") return "Mesh";
   if(tag==="path") return "Path & Slice";
   if(tag==="slicer") return "Path & Slice";
+  if(tag==="generator") return "Generators";
   if(tag==="modifier") return "Modifiers";
   if(tag==="rules") return "Rules";
   if(tag==="printer") return "Printer";
@@ -587,6 +588,7 @@ function renderNodeLibrary(){
     if(tag==="mesh") return "Mesh";
     if(tag==="path") return "Path & Slice";
     if(tag==="slicer") return "Path & Slice";
+    if(tag==="generator") return "Generators";
     if(tag==="modifier") return "Modifiers";
     if(tag==="rules") return "Rules";
     if(tag==="printer") return "Printer";

@@ -301,11 +301,11 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
     mount.appendChild(field("Bed align", elToggle(!!d.bedAlign, v=>{ d.bedAlign=!!v; markDirtyAuto(); saveState(); })));
     mount.appendChild(field("Link handles", elToggle(d.linkHandles!==false, v=>{ d.linkHandles=!!v; markDirtyAuto(); saveState(); })));
 
-    const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
-    const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
+    const selectedIndex = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
+    const selectedPoint = (selectedIndex >= 0 && d.points[selectedIndex]) ? normalizePoint(d.points[selectedIndex]) : null;
     const selLabel = document.createElement("div");
     selLabel.className = "hint";
-    selLabel.textContent = selectedPoint ? `Selected point #${selected + 1}` : "Select a control point to edit handles.";
+    selLabel.textContent = selectedPoint ? `Selected point #${selectedIndex + 1}` : "Select a control point to edit handles.";
     mount.appendChild(selLabel);
     if(selectedPoint){
       const typeWrap = document.createElement("div");
@@ -336,31 +336,6 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       mount.appendChild(grid2([
         field("Handle out U", elNumber(selectedPoint.hOutU, v=>{ selectedPoint.hOutU=v; if(d.linkHandles){ selectedPoint.hInU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
         field("Handle out R", elNumber(selectedPoint.hOutR, v=>{ selectedPoint.hOutR=v; if(d.linkHandles){ selectedPoint.hInR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
-      ]));
-    }
-
-    const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
-    const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
-    const selLabel = document.createElement("div");
-    selLabel.className = "hint";
-    selLabel.textContent = selectedPoint ? `Selected point #${selected + 1}` : "Select a control point to edit handles.";
-    mount.appendChild(selLabel);
-    if(selectedPoint){
-      mount.appendChild(field("Point type", elSelect(selectedPoint.type, [["smooth","Smooth"],["sharp","Sharp"]], v=>{
-        selectedPoint.type = v;
-        if(v === "sharp"){
-          selectedPoint.hInU = 0; selectedPoint.hInR = 0;
-          selectedPoint.hOutU = 0; selectedPoint.hOutR = 0;
-        }
-        saveState(); markDirtyAuto(); draw();
-      })));
-      mount.appendChild(grid2([
-        field("Handle in U", elNumber(selectedPoint.hInU, v=>{ selectedPoint.hInU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
-        field("Handle in R", elNumber(selectedPoint.hInR, v=>{ selectedPoint.hInR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
-      ]));
-      mount.appendChild(grid2([
-        field("Handle out U", elNumber(selectedPoint.hOutU, v=>{ selectedPoint.hOutU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
-        field("Handle out R", elNumber(selectedPoint.hOutR, v=>{ selectedPoint.hOutR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
       ]));
     }
 
