@@ -146,16 +146,19 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       let r = p0.r + (p1.r-p0.r)*t;
 
       const s = clamp(Number(smooth||0), 0, 1);
-      if(s>0){
-        const pPrev = normalizePoint(pts[Math.max(0,i-2)]);
-        const pNext = normalizePoint(pts[Math.min(pts.length-1,i+1)]);
-        const rAlt = cubicHermite(u, pPrev, p0, p1, pNext);
-        r = r*(1-s) + rAlt*s;
+      const pPrev = normalizePoint(pts[Math.max(0,i-2)]);
+      const pNext = normalizePoint(pts[Math.min(pts.length-1,i+1)]);
+      const rHermite = cubicHermite(u, pPrev, p0, p1, pNext);
+      const hasHandles = hasHandle(p0) || hasHandle(p1);
+      if(hasHandles){
+        r = rHermite;
+      }else if(s>0){
+        r = r*(1-s) + rHermite*s;
       }
       return clamp(r, 0.05, 2.0);
     }
     function cubicHermite(u, pPrev, p0, p1, pNext){
-      if(p0.type === "sharp" || p1.type === "sharp"){
+      if((p0.type === "sharp" || p1.type === "sharp") && !hasHandle(p0) && !hasHandle(p1)){
         const t = (u-p0.u)/Math.max(1e-9,(p1.u-p0.u));
         return p0.r + (p1.r - p0.r) * t;
       }
@@ -179,6 +182,10 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       const du = (pNext.u - pPrev.u);
       if(Math.abs(du) < 1e-6) return 0;
       return (pNext.r - pPrev.r) / du;
+    }
+    function hasHandle(p){
+      return Math.abs(p.hInU) > 1e-6 || Math.abs(p.hInR) > 1e-6
+        || Math.abs(p.hOutU) > 1e-6 || Math.abs(p.hOutR) > 1e-6;
     }
 
     function getPtsSorted(){ return (d.points||[]).map(normalizePoint).slice().sort((a,b)=>a.u-b.u); }
