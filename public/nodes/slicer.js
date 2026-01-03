@@ -60,6 +60,7 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer'] = {
       path = sliceMeshPlanar(m, {
         layerHeight: d.layerHeight,
         lineWidth: d.lineWidth,
+        detectThinWalls: d.detectThinWalls,
         perimeters: d.perimeters,
         infillPct: d.infillPct,
         infillAngle: d.infillAngle,

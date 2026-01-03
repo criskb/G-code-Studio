@@ -3355,7 +3355,8 @@ function roleFlowFor(role, o){
   const lh = Math.max(0.08, Number(opts.layerHeight||0.24));
   const lw = Math.max(0.2, Number(opts.lineWidth||0.45));
   const infillLW = Math.max(0.2, Number(opts.infillLineWidth||0) || lw);
-  const per = Math.max(0, Math.floor(opts.perimeters||2));
+  let per = Math.max(0, Math.floor(opts.perimeters||2));
+  if(opts.detectThinWalls && per === 0) per = 1;
   const topN = Math.max(0, Math.floor(opts.topLayers||0));
   const botN = Math.max(0, Math.floor(opts.bottomLayers||0));
   const infPct = clamp(Number(opts.infillPct||0), 0, 100);
@@ -3397,6 +3398,19 @@ const lastLayer = layers - 1;
     if(!loops.length) continue;
     loops.sort((a,b)=>Math.abs(polyArea2D(b))-Math.abs(polyArea2D(a)));
     const outer = loops[0];
+    const holeLoops = loops.filter((lp, idx)=> idx>0 && polyArea2D(lp) < 0);
+
+    const isPointInPoly = (pt, poly)=>{
+      let inside = false;
+      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+        const xi = poly[i][0], yi = poly[i][1];
+        const xj = poly[j][0], yj = poly[j][1];
+        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    };
 
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
@@ -3405,18 +3419,22 @@ const lastLayer = layers - 1;
     // Walls (include outer loop as first perimeter, then inset)
     const wallsPaths = [];
     if(per>0){
-      let poly = outer;
-      for(let k=0;k<per;k++){
-        // emit current poly
-        for(let i=0;i<poly.length;i++){
-          const p=poly[i];
-          const r = (k===0) ? "wall_outer" : "wall_inner";
-        wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r}});
+      const emitWallLoop = (poly, loopRole, offsetDir)=>{
+        let cur = poly;
+        for(let k=0;k<per;k++){
+          for(let i=0;i<cur.length;i++){
+            const p=cur[i];
+            const r = (k===0) ? loopRole : "wall_inner";
+            wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r}});
+          }
+          const off = offsetPolyMiter(cur, offsetDir);
+          if(!off) break;
+          cur = off;
         }
-        // next inset
-        const off = offsetPolyMiter(poly, -lw);
-        if(!off) break;
-        poly = off;
+      };
+      emitWallLoop(outer, "wall_outer", -lw);
+      for(const hole of holeLoops){
+        emitWallLoop(hole, "wall_inner", lw);
       }
     }
 
@@ -3438,7 +3456,13 @@ const lastLayer = layers - 1;
         }
       }else{
         const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-      segA = genInfillSegmentsPattern(outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
+        segA = genInfillSegmentsPattern(outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
+        if(holeLoops.length){
+          segA = segA.filter((s)=>{
+            const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
+            return !holeLoops.some((hole)=>isPointInPoly(mid, hole));
+          });
+        }
       }
       if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, roleSolid || "infill"));
 }
