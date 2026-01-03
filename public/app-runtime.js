@@ -2239,6 +2239,33 @@ function roleToRGBA(role){
   return hexToRGBAf(hex, a);
 }
 
+const FEATURE_ROLE_ALIASES = {
+  perimeter: "wall_outer",
+  perimeters: "wall_outer",
+  inner_perimeter: "wall_inner",
+  outer_perimeter: "wall_outer",
+  wall: "walls",
+  walls: "walls",
+  skin: "top",
+  top_skin: "top",
+  bottom_skin: "bottom",
+  gap_fill: "infill",
+  sparse_infill: "infill",
+  solid_infill: "top",
+  bridge: "top",
+  support: "support",
+  support_interface: "support",
+  skirt: "travel",
+  brim: "travel",
+  raft: "bottom"
+};
+
+function normalizeFeatureRole(raw){
+  if(!raw) return "";
+  const r = String(raw).toLowerCase().trim();
+  return FEATURE_ROLE_ALIASES[r] || r;
+}
+
 function tToRGBA(t){
   const tt = Math.max(0, Math.min(1, t));
   const r = Math.round(220 * tt + 30);
@@ -2257,7 +2284,7 @@ function getPreviewColor(pt){
     }
   }
   const role = (pt.meta && pt.meta.role) ? pt.meta.role : (pt.role||"");
-  return roleToRGBA(role);
+  return roleToRGBA(normalizeFeatureRole(role));
 }
 
 function toolpathToPath(toolpath, options){
@@ -2287,6 +2314,7 @@ function toolpathToPath(toolpath, options){
       const pos = profile ? toMachineXY(x, y, profile) : {X:x, Y:y};
       const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
       if(!meta.role && meta.feature) meta.role = meta.feature;
+      if(meta.role) meta.role = normalizeFeatureRole(meta.role);
       if(meta.layerHeight == null) meta.layerHeight = layerHeight;
       const travel = move.kind === "travel" || meta.feature === "travel";
       path.push({x:pos.X, y:pos.Y, z, layer: li, travel, meta, role: meta.role});

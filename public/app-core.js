@@ -380,6 +380,12 @@ function animateScrubPlayback(ts){
 function normalizePreviewRole(role, travel){
   if(travel) return "travel";
   const r = String(role || "").toLowerCase();
+  if(r === "perimeter" || r === "outer_perimeter") return "wall_outer";
+  if(r === "inner_perimeter") return "wall_inner";
+  if(r === "skin" || r === "top_skin") return "top";
+  if(r === "bottom_skin") return "bottom";
+  if(r === "gap_fill" || r === "sparse_infill" || r === "solid_infill") return "infill";
+  if(r === "support" || r === "support_interface") return "support";
   if(!r) return "";
   if(r === "inner_wall") return "wall_inner";
   if(r === "outer_wall") return "wall_outer";
