@@ -339,6 +339,31 @@ window.GCODE_STUDIO.NODE_DEFS['Vase (Control Points)'] = {
       ]));
     }
 
+    const selected = Number.isFinite(d.selectedIndex) ? d.selectedIndex : -1;
+    const selectedPoint = (selected >= 0 && d.points[selected]) ? normalizePoint(d.points[selected]) : null;
+    const selLabel = document.createElement("div");
+    selLabel.className = "hint";
+    selLabel.textContent = selectedPoint ? `Selected point #${selected + 1}` : "Select a control point to edit handles.";
+    mount.appendChild(selLabel);
+    if(selectedPoint){
+      mount.appendChild(field("Point type", elSelect(selectedPoint.type, [["smooth","Smooth"],["sharp","Sharp"]], v=>{
+        selectedPoint.type = v;
+        if(v === "sharp"){
+          selectedPoint.hInU = 0; selectedPoint.hInR = 0;
+          selectedPoint.hOutU = 0; selectedPoint.hOutR = 0;
+        }
+        saveState(); markDirtyAuto(); draw();
+      })));
+      mount.appendChild(grid2([
+        field("Handle in U", elNumber(selectedPoint.hInU, v=>{ selectedPoint.hInU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle in R", elNumber(selectedPoint.hInR, v=>{ selectedPoint.hInR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hOutR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+      mount.appendChild(grid2([
+        field("Handle out U", elNumber(selectedPoint.hOutU, v=>{ selectedPoint.hOutU=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInU=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01)),
+        field("Handle out R", elNumber(selectedPoint.hOutR, v=>{ selectedPoint.hOutR=v; if(selectedPoint.type==="smooth"){ selectedPoint.hInR=-v; } saveState(); markDirtyAuto(); draw(); }, 0.01))
+      ]));
+    }
+
     mount.appendChild(dividerTiny());
     mount.appendChild(field("Output spiral wall path", elToggle(!!d.outputSpiralPath, v=>{ d.outputSpiralPath=!!v; markDirtyAuto(); saveState(); })));
     if(d.outputSpiralPath){
