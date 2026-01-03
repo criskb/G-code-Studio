@@ -43,7 +43,7 @@ function getMeshInput(ctx, node, port){
   const inp = ctx.getInput(node.id, port);
   return inp?.mesh || inp?.out || inp || null;
 }
-function getBounds(mesh){
+function getBoundsLocal(mesh){
   if(!mesh) return null;
   if(mesh.bounds) return mesh.bounds;
   if(mesh.tris && mesh.tris.length) return computeMeshBounds(mesh.tris);
@@ -116,7 +116,7 @@ const ideaNodeUtils = {
   parseNumberList,
   getPathInput,
   getMeshInput,
-  getBounds,
+  getBounds: getBoundsLocal,
   summarizeToolpath,
   simpleReport,
   simpleNode

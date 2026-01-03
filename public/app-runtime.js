@@ -212,14 +212,38 @@ const SHORTCUT_DEFAULTS = {
   fitView: "KeyF",
   centerView: "KeyC"
 };
+const THEME_DEFAULTS = {
+  custom: false,
+  bg0: "#0b0f14",
+  bg1: "#0d141c",
+  panel: "#0a0e14",
+  panel2: "#0c121a",
+  accent: "#42ffb3",
+  accent2: "#6aa6ff",
+  text: "#f5f7ff",
+  muted: "#a7b0bb"
+};
+const GRAPH_BG_DEFAULTS = {
+  pattern: "dots",
+  dotSize: 28,
+  dotOpacity: 0.18,
+  gridSize: 32
+};
 let appSettings = {
   showLib: false,
   spacePicker: true,
   spacePickerWhileTyping: false,
   pickerDelayMs: 140,
   spawnAtCursor: true,
+  theme: { ...THEME_DEFAULTS },
+  graphBg: { ...GRAPH_BG_DEFAULTS },
   shortcuts: { ...SHORTCUT_DEFAULTS }
 };
+
+function normalizeAppSettings(){
+  appSettings.theme = { ...THEME_DEFAULTS, ...(appSettings.theme || {}) };
+  appSettings.graphBg = { ...GRAPH_BG_DEFAULTS, ...(appSettings.graphBg || {}) };
+}
 
 function loadAppSettings(){
   try{
@@ -231,6 +255,7 @@ function loadAppSettings(){
       }
     }
   }catch(_){}
+  normalizeAppSettings();
   applyAppSettings();
 }
 
@@ -240,6 +265,7 @@ function mergeUserConfig(cfg){
     const merged = { ...appSettings, ...cfg.appSettings };
     merged.shortcuts = { ...SHORTCUT_DEFAULTS, ...(cfg.appSettings.shortcuts || {}), ...(appSettings.shortcuts || {}) };
     appSettings = merged;
+    normalizeAppSettings();
   }
 }
 
@@ -277,6 +303,8 @@ function applyAppSettings(){
   if(appEl){
     appEl.classList.toggle("showLib", !!appSettings.showLib);
   }
+  applyThemeSettings();
+  applyGraphBgSettings();
 }
 
 // Settings modal wiring
@@ -288,6 +316,19 @@ const setSpaceWhileTyping = document.getElementById("setSpaceWhileTyping");
 const setPickerDelay = document.getElementById("setPickerDelay");
 const setSpawnCursor = document.getElementById("setSpawnCursor");
 const shortcutList = document.getElementById("shortcutList");
+const setThemeCustom = document.getElementById("setThemeCustom");
+const setThemeBg0 = document.getElementById("setThemeBg0");
+const setThemeBg1 = document.getElementById("setThemeBg1");
+const setThemePanel = document.getElementById("setThemePanel");
+const setThemePanel2 = document.getElementById("setThemePanel2");
+const setThemeAccent = document.getElementById("setThemeAccent");
+const setThemeAccent2 = document.getElementById("setThemeAccent2");
+const setThemeText = document.getElementById("setThemeText");
+const setThemeMuted = document.getElementById("setThemeMuted");
+const setGraphPattern = document.getElementById("setGraphPattern");
+const setGraphDotSize = document.getElementById("setGraphDotSize");
+const setGraphDotOpacity = document.getElementById("setGraphDotOpacity");
+const setGraphGridSize = document.getElementById("setGraphGridSize");
 
 const SHORTCUT_DEFS = [
   { key: "openPicker", label: "Open Node Picker", hint: "Space" },
@@ -309,6 +350,24 @@ function syncSettingsUI(){
   setSpaceWhileTyping.checked = !!appSettings.spacePickerWhileTyping;
   setPickerDelay.value = String(Math.max(0, Math.min(400, Number(appSettings.pickerDelayMs)||0)));
   setSpawnCursor.checked = !!appSettings.spawnAtCursor;
+  if(appSettings.theme){
+    setThemeCustom.checked = !!appSettings.theme.custom;
+    setThemeBg0.value = appSettings.theme.bg0 || "#0b0f14";
+    setThemeBg1.value = appSettings.theme.bg1 || "#0d141c";
+    setThemePanel.value = appSettings.theme.panel || "#0a0e14";
+    setThemePanel2.value = appSettings.theme.panel2 || "#0c121a";
+    setThemeAccent.value = appSettings.theme.accent || "#42ffb3";
+    setThemeAccent2.value = appSettings.theme.accent2 || "#6aa6ff";
+    setThemeText.value = appSettings.theme.text || "#f5f7ff";
+    setThemeMuted.value = appSettings.theme.muted || "#a7b0bb";
+  }
+  if(appSettings.graphBg){
+    setGraphPattern.value = appSettings.graphBg.pattern || "dots";
+    setGraphDotSize.value = String(appSettings.graphBg.dotSize ?? 28);
+    setGraphDotOpacity.value = String(Math.round((appSettings.graphBg.dotOpacity ?? 0.18) * 100));
+    setGraphGridSize.value = String(appSettings.graphBg.gridSize ?? 32);
+  }
+  syncThemeControlState();
   renderShortcutList();
 }
 
@@ -345,6 +404,85 @@ bindSetting(setSpacePicker, "spacePicker", v=>!!v);
 bindSetting(setSpaceWhileTyping, "spacePickerWhileTyping", v=>!!v);
 bindSetting(setPickerDelay, "pickerDelayMs", v=>Number(v));
 bindSetting(setSpawnCursor, "spawnAtCursor", v=>!!v);
+bindSetting(setThemeCustom, "theme", v=>({ ...appSettings.theme, custom: !!v }));
+bindSetting(setThemeBg0, "theme", v=>({ ...appSettings.theme, bg0: v }));
+bindSetting(setThemeBg1, "theme", v=>({ ...appSettings.theme, bg1: v }));
+bindSetting(setThemePanel, "theme", v=>({ ...appSettings.theme, panel: v }));
+bindSetting(setThemePanel2, "theme", v=>({ ...appSettings.theme, panel2: v }));
+bindSetting(setThemeAccent, "theme", v=>({ ...appSettings.theme, accent: v }));
+bindSetting(setThemeAccent2, "theme", v=>({ ...appSettings.theme, accent2: v }));
+bindSetting(setThemeText, "theme", v=>({ ...appSettings.theme, text: v }));
+bindSetting(setThemeMuted, "theme", v=>({ ...appSettings.theme, muted: v }));
+bindSetting(setGraphPattern, "graphBg", v=>({ ...appSettings.graphBg, pattern: v }));
+bindSetting(setGraphDotSize, "graphBg", v=>({ ...appSettings.graphBg, dotSize: Math.max(6, Math.min(80, Number(v)||28)) }));
+bindSetting(setGraphDotOpacity, "graphBg", v=>({ ...appSettings.graphBg, dotOpacity: Math.max(0, Math.min(1, Number(v)/100 || 0)) }));
+bindSetting(setGraphGridSize, "graphBg", v=>({ ...appSettings.graphBg, gridSize: Math.max(8, Math.min(120, Number(v)||32)) }));
+setThemeCustom?.addEventListener("change", syncThemeControlState);
+
+function syncThemeControlState(){
+  const enabled = !!appSettings.theme?.custom;
+  const inputs = [
+    setThemeBg0,
+    setThemeBg1,
+    setThemePanel,
+    setThemePanel2,
+    setThemeAccent,
+    setThemeAccent2,
+    setThemeText,
+    setThemeMuted
+  ];
+  inputs.forEach((el)=>{
+    if(!el) return;
+    el.disabled = !enabled;
+    el.closest(".npItem")?.classList?.toggle("isDisabled", !enabled);
+  });
+}
+
+function applyThemeSettings(){
+  const root = document.documentElement;
+  const theme = appSettings.theme || {};
+  if(theme.custom){
+    root.style.setProperty("--bg0", theme.bg0 || "#0b0f14");
+    root.style.setProperty("--bg1", theme.bg1 || theme.bg0 || "#0b0f14");
+    root.style.setProperty("--panel", theme.panel || "#0a0e14");
+    root.style.setProperty("--panel2", theme.panel2 || theme.panel || "#0a0e14");
+    root.style.setProperty("--accent", theme.accent || "#42ffb3");
+    root.style.setProperty("--accent2", theme.accent2 || "#6aa6ff");
+    root.style.setProperty("--text", theme.text || "#f5f7ff");
+    root.style.setProperty("--muted", theme.muted || "#a7b0bb");
+  }else{
+    root.style.removeProperty("--bg0");
+    root.style.removeProperty("--bg1");
+    root.style.removeProperty("--panel");
+    root.style.removeProperty("--panel2");
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent2");
+    root.style.removeProperty("--text");
+    root.style.removeProperty("--muted");
+  }
+}
+
+function applyGraphBgSettings(){
+  const graphBg = document.getElementById("graphBg");
+  if(!graphBg) return;
+  const opts = appSettings.graphBg || {};
+  const pattern = opts.pattern || "dots";
+  graphBg.classList.remove(
+    "pattern-dots",
+    "pattern-grid",
+    "pattern-crosshatch",
+    "pattern-diagonal",
+    "pattern-squares",
+    "pattern-checker",
+    "pattern-diamond",
+    "pattern-none"
+  );
+  graphBg.classList.add(`pattern-${pattern}`);
+  const root = document.documentElement;
+  root.style.setProperty("--graph-dot-size", `${opts.dotSize ?? 28}px`);
+  root.style.setProperty("--graph-dot-opacity", String(opts.dotOpacity ?? 0.18));
+  root.style.setProperty("--graph-grid-size", `${opts.gridSize ?? 32}px`);
+}
 
 function shortcutToLabel(code){
   if(!code) return "—";
@@ -1285,15 +1423,6 @@ function requestLinkRedraw(){
 }
 
 /* ---- Link type coloring + target highlights ---- */
-const TYPE_ALIASES = {
-  meshArray: "mesh[]"
-};
-function normalizePortType(type){
-  return TYPE_ALIASES[type] || type;
-}
-function isTypeCompatible(a, b){
-  return normalizePortType(a) === normalizePortType(b);
-}
 const TYPE_COLORS = {
   path:   "rgba(106,166,255,0.92)",
   mesh:   "rgba(255,176,82,0.92)",

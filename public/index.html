@@ -267,6 +267,154 @@
       </div>
 
       <div class="divider"></div>
+      <div class="npSection">Theming</div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Custom theme</div>
+          <div class="npDesc">Override base colors and accents.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setThemeCustom" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Background</div>
+          <div class="npDesc">Primary app background color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeBg0" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Secondary background</div>
+          <div class="npDesc">Used for subtle contrast and panels.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeBg1" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Panel</div>
+          <div class="npDesc">Panel surface color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemePanel" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Panel (alt)</div>
+          <div class="npDesc">Secondary panel color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemePanel2" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Accent</div>
+          <div class="npDesc">Primary highlight color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeAccent" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Accent (alt)</div>
+          <div class="npDesc">Secondary highlight color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeAccent2" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Text</div>
+          <div class="npDesc">Primary text color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeText" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Muted text</div>
+          <div class="npDesc">Secondary text color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeMuted" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="npSection">Background Grid</div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Pattern</div>
+          <div class="npDesc">Graph background style.</div>
+        </div>
+        <div class="npBadges">
+          <select id="setGraphPattern" class="npSearch" style="width:140px; padding:8px 10px;">
+            <option value="dots">Dots</option>
+            <option value="grid">Grid</option>
+            <option value="crosshatch">Crosshatch</option>
+            <option value="diagonal">Diagonal</option>
+            <option value="squares">Squares</option>
+            <option value="checker">Checker</option>
+            <option value="diamond">Diamond</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Dot size</div>
+          <div class="npDesc">Size of dots (px).</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphDotSize" type="number" min="6" max="80" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Dot opacity</div>
+          <div class="npDesc">Opacity percent for dots/grid.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphDotOpacity" type="number" min="0" max="100" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Grid size</div>
+          <div class="npDesc">Grid spacing (px).</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphGridSize" type="number" min="8" max="120" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
       <div class="hint">
         Tip: Press <span class="kbd">Space</span> to add nodes, <span class="kbd">Enter</span> to place, <span class="kbd">Esc</span> to cancel.
       </div>
@@ -352,6 +500,7 @@
 <script src="/nodes/non-planar.js"></script>
 <script src="/nodes/note.js"></script>
 <script src="/nodes/orca-preset.js"></script>
+<script src="/nodes/profile-adapters.js"></script>
 <script src="/nodes/path.js"></script>
 <script src="/nodes/path-to-toolpath.js"></script>
 <script src="/nodes/procedural-path-generator.js"></script>
