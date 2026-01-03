@@ -161,6 +161,38 @@
                 <input class="pcRange" id="prevLayer" type="range" min="0" max="0" value="0"/>
                 <div class="pcVal" id="prevLayerVal">All</div>
               </div>
+              <div class="pcRow">
+                <div class="pcLabel">Scrub</div>
+                <input class="pcRange" id="prevScrub" type="range" min="0" max="100" value="100"/>
+                <div class="pcVal" id="prevScrubVal">100%</div>
+              </div>
+              <div class="pcRow">
+                <div class="pcLabel">Playback</div>
+                <button class="btn" id="prevScrubPlay" type="button">Play</button>
+                <select class="pcSel" id="prevScrubSpeed">
+                  <option value="0.5">0.5×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="2">2×</option>
+                  <option value="4">4×</option>
+                </select>
+                <label class="pcLabel" style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                  <input type="checkbox" id="prevScrubLoop" />
+                  Loop
+                </label>
+                <label class="pcLabel" style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="prevScrubFollow" />
+                  Follow head
+                </label>
+              </div>
+              <div class="pcRow">
+                <div class="pcLabel">Toolpath</div>
+                <select class="pcSel" id="prevLineStyle">
+                  <option value="thin">Thin</option>
+                  <option value="hd">HD ribbon</option>
+                </select>
+                <input class="pcRange" id="prevLineWidth" type="range" min="0.2" max="1.5" step="0.05" value="0.6"/>
+                <div class="pcVal" id="prevLineWidthVal">0.60mm</div>
+              </div>
 
               <div class="pcLegend">
                 <span class="lg"><i data-role="top"></i>Top</span>
@@ -267,6 +299,154 @@
       </div>
 
       <div class="divider"></div>
+      <div class="npSection">Theming</div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Custom theme</div>
+          <div class="npDesc">Override base colors and accents.</div>
+        </div>
+        <div class="npBadges">
+          <label class="npBadge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setThemeCustom" />
+            <span>ON</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Background</div>
+          <div class="npDesc">Primary app background color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeBg0" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Secondary background</div>
+          <div class="npDesc">Used for subtle contrast and panels.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeBg1" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Panel</div>
+          <div class="npDesc">Panel surface color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemePanel" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Panel (alt)</div>
+          <div class="npDesc">Secondary panel color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemePanel2" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Accent</div>
+          <div class="npDesc">Primary highlight color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeAccent" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Accent (alt)</div>
+          <div class="npDesc">Secondary highlight color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeAccent2" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Text</div>
+          <div class="npDesc">Primary text color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeText" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Muted text</div>
+          <div class="npDesc">Secondary text color.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setThemeMuted" type="color" class="npSearch" style="width:90px; padding:4px 6px;" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="npSection">Background Grid</div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Pattern</div>
+          <div class="npDesc">Graph background style.</div>
+        </div>
+        <div class="npBadges">
+          <select id="setGraphPattern" class="npSearch" style="width:140px; padding:8px 10px;">
+            <option value="dots">Dots</option>
+            <option value="grid">Grid</option>
+            <option value="crosshatch">Crosshatch</option>
+            <option value="diagonal">Diagonal</option>
+            <option value="squares">Squares</option>
+            <option value="checker">Checker</option>
+            <option value="diamond">Diamond</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Dot size</div>
+          <div class="npDesc">Size of dots (px).</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphDotSize" type="number" min="6" max="80" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Dot opacity</div>
+          <div class="npDesc">Opacity percent for dots/grid.</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphDotOpacity" type="number" min="0" max="100" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="npItem" style="cursor:default;">
+        <div class="npMeta">
+          <div class="npTitle">Grid size</div>
+          <div class="npDesc">Grid spacing (px).</div>
+        </div>
+        <div class="npBadges">
+          <input id="setGraphGridSize" type="number" min="8" max="120" step="1" class="npSearch" style="width:120px; padding:8px 10px;" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
       <div class="hint">
         Tip: Press <span class="kbd">Space</span> to add nodes, <span class="kbd">Enter</span> to place, <span class="kbd">Esc</span> to cancel.
       </div>
@@ -352,6 +532,7 @@
 <script src="/nodes/non-planar.js"></script>
 <script src="/nodes/note.js"></script>
 <script src="/nodes/orca-preset.js"></script>
+<script src="/nodes/profile-adapters.js"></script>
 <script src="/nodes/path.js"></script>
 <script src="/nodes/path-to-toolpath.js"></script>
 <script src="/nodes/procedural-path-generator.js"></script>

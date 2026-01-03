@@ -43,7 +43,7 @@ function getMeshInput(ctx, node, port){
   const inp = ctx.getInput(node.id, port);
   return inp?.mesh || inp?.out || inp || null;
 }
-function getBounds(mesh){
+function getBoundsLocal(mesh){
   if(!mesh) return null;
   if(mesh.bounds) return mesh.bounds;
   if(mesh.tris && mesh.tris.length) return computeMeshBounds(mesh.tris);
@@ -116,7 +116,7 @@ const ideaNodeUtils = {
   parseNumberList,
   getPathInput,
   getMeshInput,
-  getBounds,
+  getBounds: getBoundsLocal,
   summarizeToolpath,
   simpleReport,
   simpleNode
@@ -263,6 +263,15 @@ const prevOverlayEl = document.getElementById("prevOverlay");
 const prevLayerModeEl = document.getElementById("prevLayerMode");
 const prevLayerEl = document.getElementById("prevLayer");
 const prevLayerValEl = document.getElementById("prevLayerVal");
+const prevScrubEl = document.getElementById("prevScrub");
+const prevScrubValEl = document.getElementById("prevScrubVal");
+const prevScrubPlayEl = document.getElementById("prevScrubPlay");
+const prevScrubSpeedEl = document.getElementById("prevScrubSpeed");
+const prevScrubLoopEl = document.getElementById("prevScrubLoop");
+const prevScrubFollowEl = document.getElementById("prevScrubFollow");
+const prevLineStyleEl = document.getElementById("prevLineStyle");
+const prevLineWidthEl = document.getElementById("prevLineWidth");
+const prevLineWidthValEl = document.getElementById("prevLineWidthVal");
 const previewLegendEl = document.getElementById("previewLegend");
 const previewLegendTitleEl = document.getElementById("previewLegendTitle");
 const previewLegendRangeEl = document.getElementById("previewLegendRange");
@@ -275,8 +284,25 @@ const previewFilter = {
   layerMode: "all",
   layer: 0,
   maxLayer: 0,
-  layerHeight: 0.2
+  layerHeight: 0.2,
+  scrub: 100
 };
+const previewLineSettings = {
+  mode: "thin",
+  width: 0.6
+};
+const previewScrubPlayback = {
+  playing: false,
+  speed: 1,
+  loop: true,
+  follow: false,
+  lastTs: 0,
+  raf: 0
+};
+window.__GCODE_STUDIO_PREVIEW__ = window.__GCODE_STUDIO_PREVIEW__ || {};
+window.__GCODE_STUDIO_PREVIEW__.filter = previewFilter;
+window.__GCODE_STUDIO_PREVIEW__.line = previewLineSettings;
+window.__GCODE_STUDIO_PREVIEW__.scrub = previewScrubPlayback;
 
 function computeLayerBounds(path){
   if(!path || !path.length) return {maxLayer:0, layerHeight:0.2};
@@ -310,9 +336,56 @@ function updatePreviewLayerLabel(){
   }
 }
 
+function updatePreviewScrubLabel(){
+  if(!prevScrubValEl) return;
+  const v = Math.max(0, Math.min(100, Number(previewFilter.scrub) || 0));
+  prevScrubValEl.textContent = `${v}%`;
+}
+
+function updateScrubPlaybackUI(){
+  if(!prevScrubPlayEl) return;
+  prevScrubPlayEl.textContent = previewScrubPlayback.playing ? "Pause" : "Play";
+}
+
+function animateScrubPlayback(ts){
+  if(!previewScrubPlayback.playing){
+    previewScrubPlayback.raf = 0;
+    previewScrubPlayback.lastTs = 0;
+    return;
+  }
+  const last = previewScrubPlayback.lastTs || ts;
+  const dt = Math.max(0, (ts - last) / 1000);
+  previewScrubPlayback.lastTs = ts;
+  const baseRate = 12;
+  const speed = Math.max(0.1, Number(previewScrubPlayback.speed) || 1);
+  const delta = baseRate * speed * dt;
+  const next = previewFilter.scrub + delta;
+  if(next >= 100){
+    if(previewScrubPlayback.loop){
+      previewFilter.scrub = next % 100;
+    }else{
+      previewFilter.scrub = 100;
+      previewScrubPlayback.playing = false;
+      updateScrubPlaybackUI();
+    }
+  }else{
+    previewFilter.scrub = next;
+  }
+  if(prevScrubEl) prevScrubEl.value = String(Math.round(previewFilter.scrub));
+  updatePreviewScrubLabel();
+  schedulePreviewUpdate();
+  previewScrubPlayback.raf = requestAnimationFrame(animateScrubPlayback);
+}
+
 function normalizePreviewRole(role, travel){
   if(travel) return "travel";
   const r = String(role || "").toLowerCase();
+  if(r === "perimeter" || r === "outer_perimeter") return "wall_outer";
+  if(r === "inner_perimeter") return "wall_inner";
+  if(r === "skin" || r === "top_skin") return "top";
+  if(r === "bottom_skin") return "bottom";
+  if(r === "gap_fill" || r === "sparse_infill" || r === "solid_infill") return "infill";
+  if(r === "support" || r === "support_interface") return "support";
   if(!r) return "";
   if(r === "inner_wall") return "wall_inner";
   if(r === "outer_wall") return "wall_outer";
@@ -327,7 +400,9 @@ function filterPreviewPath(path){
   const want = previewFilter.role;
   const singleLayer = previewFilter.layerMode === "single";
   const filtering = (want && want !== "all") || singleLayer;
-  if(!filtering) return path;
+  if(!filtering){
+    return applyScrubPercent(path, previewFilter.scrub);
+  }
 
   const lh = singleLayer ? (previewFilter.layerHeight || (pickLayerHeight(path, null) || 0.2)) : null;
   const Lwant = singleLayer ? (previewFilter.layer|0) : null;
@@ -359,6 +434,42 @@ function filterPreviewPath(path){
       open = false;
     }
   }
+  return applyScrubPercent(out, previewFilter.scrub);
+}
+
+function applyScrubPercent(path, percent){
+  const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+  if(pct >= 100) return path;
+  if(pct <= 0) return [];
+  let totalSeg = 0;
+  let last = null;
+  for(const p of path){
+    if(!p){ last = null; continue; }
+    if(last) totalSeg++;
+    last = p;
+  }
+  if(!totalSeg) return [];
+  const allowed = Math.max(0, Math.floor(totalSeg * pct / 100));
+  if(!allowed) return [];
+  const out = [];
+  let segCount = 0;
+  last = null;
+  for(const p of path){
+    if(!p){
+      if(out.length && out[out.length-1] !== null) out.push(null);
+      last = null;
+      continue;
+    }
+    if(!last){
+      out.push(p);
+      last = p;
+      continue;
+    }
+    if(segCount >= allowed) break;
+    out.push(p);
+    segCount++;
+    last = p;
+  }
   return out;
 }
 
@@ -370,6 +481,21 @@ function bindPreviewControls(){
   if(prevOverlayEl) prevOverlayEl.value = previewFilter.overlay;
   prevLayerModeEl.value = previewFilter.layerMode;
   prevLayerEl.value = String(previewFilter.layer);
+  if(prevScrubEl){
+    prevScrubEl.value = String(previewFilter.scrub);
+    updatePreviewScrubLabel();
+  }
+  if(prevScrubSpeedEl){
+    prevScrubSpeedEl.value = String(previewScrubPlayback.speed || 1);
+  }
+  if(prevScrubLoopEl) prevScrubLoopEl.checked = !!previewScrubPlayback.loop;
+  if(prevScrubFollowEl) prevScrubFollowEl.checked = !!previewScrubPlayback.follow;
+  updateScrubPlaybackUI();
+  if(prevLineStyleEl) prevLineStyleEl.value = previewLineSettings.mode;
+  if(prevLineWidthEl && prevLineWidthValEl){
+    prevLineWidthEl.value = String(previewLineSettings.width);
+    prevLineWidthValEl.textContent = `${previewLineSettings.width.toFixed(2)}mm`;
+  }
 
   prevRoleEl.addEventListener("change", ()=>{
     previewFilter.role = prevRoleEl.value;
@@ -392,6 +518,51 @@ function bindPreviewControls(){
     updatePreviewLayerLabel();
     schedulePreviewUpdate();
   });
+  if(prevScrubEl){
+    prevScrubEl.addEventListener("input", ()=>{
+      previewFilter.scrub = Math.max(0, Math.min(100, Number(prevScrubEl.value||0)));
+      updatePreviewScrubLabel();
+      schedulePreviewUpdate();
+    });
+  }
+  if(prevScrubPlayEl){
+    prevScrubPlayEl.addEventListener("click", ()=>{
+      previewScrubPlayback.playing = !previewScrubPlayback.playing;
+      updateScrubPlaybackUI();
+      if(previewScrubPlayback.playing && !previewScrubPlayback.raf){
+        previewScrubPlayback.raf = requestAnimationFrame(animateScrubPlayback);
+      }
+    });
+  }
+  if(prevScrubSpeedEl){
+    prevScrubSpeedEl.addEventListener("change", ()=>{
+      previewScrubPlayback.speed = Math.max(0.1, Number(prevScrubSpeedEl.value || 1));
+    });
+  }
+  if(prevScrubLoopEl){
+    prevScrubLoopEl.addEventListener("change", ()=>{
+      previewScrubPlayback.loop = !!prevScrubLoopEl.checked;
+    });
+  }
+  if(prevScrubFollowEl){
+    prevScrubFollowEl.addEventListener("change", ()=>{
+      previewScrubPlayback.follow = !!prevScrubFollowEl.checked;
+    });
+  }
+  if(prevLineStyleEl){
+    prevLineStyleEl.addEventListener("change", ()=>{
+      previewLineSettings.mode = prevLineStyleEl.value;
+      schedulePreviewUpdate();
+    });
+  }
+  if(prevLineWidthEl && prevLineWidthValEl){
+    prevLineWidthEl.addEventListener("input", ()=>{
+      const v = Math.max(0.2, Math.min(1.5, Number(prevLineWidthEl.value || 0.6)));
+      previewLineSettings.width = v;
+      prevLineWidthValEl.textContent = `${v.toFixed(2)}mm`;
+      schedulePreviewUpdate();
+    });
+  }
   bindPreviewControls.bound = true;
 }
 bindPreviewControls.bound = false;
@@ -3183,6 +3354,7 @@ function roleFlowFor(role, o){
   if(!mesh || !mesh.tris) return [];
   const lh = Math.max(0.08, Number(opts.layerHeight||0.24));
   const lw = Math.max(0.2, Number(opts.lineWidth||0.45));
+  const infillLW = Math.max(0.2, Number(opts.infillLineWidth||0) || lw);
   const per = Math.max(0, Math.floor(opts.perimeters||2));
   const topN = Math.max(0, Math.floor(opts.topLayers||0));
   const botN = Math.max(0, Math.floor(opts.bottomLayers||0));
@@ -3252,10 +3424,10 @@ const lastLayer = layers - 1;
     const fillPaths = [];
     const pct = roleSolid ? 100 : infPct;
     if(pct>0){
-      const spacing = roleSolid ? (lw*0.95) : clamp(lw / Math.max(0.01, pct/100), lw*1.05, lw*12);
+      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
-      const pat = (opts.infillPattern||"lines");
+      const pat = roleSolid ? solidPat : infPat;
       if(pat==="concentric"){
         const loops2 = genConcentricLoops(outer, spacing);
         for(const lp of loops2){
