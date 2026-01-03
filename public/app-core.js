@@ -3354,6 +3354,7 @@ function roleFlowFor(role, o){
   if(!mesh || !mesh.tris) return [];
   const lh = Math.max(0.08, Number(opts.layerHeight||0.24));
   const lw = Math.max(0.2, Number(opts.lineWidth||0.45));
+  const infillLW = Math.max(0.2, Number(opts.infillLineWidth||0) || lw);
   const per = Math.max(0, Math.floor(opts.perimeters||2));
   const topN = Math.max(0, Math.floor(opts.topLayers||0));
   const botN = Math.max(0, Math.floor(opts.bottomLayers||0));
@@ -3423,10 +3424,10 @@ const lastLayer = layers - 1;
     const fillPaths = [];
     const pct = roleSolid ? 100 : infPct;
     if(pct>0){
-      const spacing = roleSolid ? (lw*0.95) : clamp(lw / Math.max(0.01, pct/100), lw*1.05, lw*12);
+      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
-      const pat = (opts.infillPattern||"lines");
+      const pat = roleSolid ? solidPat : infPat;
       if(pat==="concentric"){
         const loops2 = genConcentricLoops(outer, spacing);
         for(const lp of loops2){

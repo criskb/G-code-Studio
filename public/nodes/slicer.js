@@ -64,9 +64,12 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer'] = {
         infillPct: d.infillPct,
         infillAngle: d.infillAngle,
         infillPattern: d.infillPattern,
+        solidPattern: d.solidPattern,
         topLayers: d.topLayers,
         bottomLayers: d.bottomLayers,
         serpentine: d.serpentine,
+        brickLayer: d.brickLayer,
+        infillLineWidth: d.infillLineWidth,
         maxLayers,
         maxSegs,
         roleOrder: "bottom,walls,infill,top"
