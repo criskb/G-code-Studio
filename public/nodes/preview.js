@@ -7,6 +7,7 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
   inputs: [
     {name:"mesh", type:"mesh"},
     {name:"toolpath", type:"toolpath"},
+    {name:"path", type:"path"},
     {name:"preview", type:"preview"}
   ],
   outputs: [{name:"preview", type:"preview"}],
@@ -43,12 +44,16 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
   evaluate:(node, ctx)=>{
     const meshIn = ctx.getInput(node.id, "mesh");
     const toolpathIn = ctx.getInput(node.id, "toolpath");
+    const pathIn = ctx.getInput(node.id, "path");
     const previewIn = ctx.getInput(node.id, "preview");
     const mesh = meshIn?.mesh || meshIn?.out || meshIn || null;
     const toolpath = toolpathIn?.toolpath || toolpathIn?.out || toolpathIn || null;
+    const pathRaw = pathIn?.path || pathIn?.out || pathIn || null;
+    const path = Array.isArray(pathRaw) ? pathRaw.filter(Boolean) : [];
     const base = (previewIn && typeof previewIn === "object") ? {...previewIn} : {};
     if(mesh) base.mesh = mesh;
     if(toolpath) base.toolpath = toolpath;
+    if(pathIn) base.path = path;
     const hasPayload = Object.keys(base).length > 0;
     return { preview: hasPayload ? base : null };
   },

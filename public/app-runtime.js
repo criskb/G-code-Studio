@@ -2389,7 +2389,8 @@ function updatePreview(){
     // Basic 2D fallback (same as v2 style, but still not interactive)
     fallback2d.style.display="block";
     glCanvas.style.display="none";
-    const __pAll2=(state.outputs.path||[]);
+    const previewPath = state.outputs.preview?.path;
+    const __pAll2 = Array.isArray(previewPath) ? previewPath : (state.outputs.path||[]);
     updatePreviewControlsFromPath(__pAll2);
     draw2dFallback(filterPreviewPath(__pAll2));
     return;
@@ -2428,13 +2429,14 @@ if(previewMeshSettings.viewer === "mv"){
   const previewPayload = state.outputs.preview || null;
   const previewMesh = previewPayload?.mesh || state.outputs.mesh || null;
   const previewToolpath = previewPayload?.toolpath || state.outputs.toolpath || null;
+  const previewPath = previewPayload?.path;
   const overlays = previewPayload?.overlays || (previewToolpath ? ["featureType"] : []);
 
   updatePreviewOverlayOptions(overlays);
   updatePreviewLegend(previewPayload?.legend || null);
   setPreviewMesh(previewMesh, prof);
 
-  let pathForPreview = (state.outputs.path||[]);
+  let pathForPreview = Array.isArray(previewPath) ? previewPath : (state.outputs.path||[]);
   let warning = "";
   if(previewToolpath){
     const converted = toolpathToPath(previewToolpath, {maxMoves:200000, profile: prof});
