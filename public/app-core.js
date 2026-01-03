@@ -3053,6 +3053,22 @@ function polyArea2D(pts){
   }
   return a*0.5;
 }
+function polyCentroid2D(pts){
+  const n = pts.length;
+  let cx = 0, cy = 0;
+  let area = 0;
+  for(let i=0;i<n-1;i++){
+    const p = pts[i], q = pts[i+1];
+    const cross = p[0]*q[1] - q[0]*p[1];
+    cx += (p[0] + q[0]) * cross;
+    cy += (p[1] + q[1]) * cross;
+    area += cross;
+  }
+  area *= 0.5;
+  if(Math.abs(area) < 1e-9) return pts[0] ? [pts[0][0], pts[0][1]] : [0,0];
+  const f = 1 / (6 * area);
+  return [cx * f, cy * f];
+}
 function polyBounds2D(pts){
   let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
   for(const p of pts){
@@ -3060,6 +3076,184 @@ function polyBounds2D(pts){
     maxx=Math.max(maxx,p[0]); maxy=Math.max(maxy,p[1]);
   }
   return {minx,miny,maxx,maxy};
+}
+function pointInPoly(pt, poly){
+  let inside = false;
+  for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+      && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function normalizeLoopClosed(loop, eps=1e-6){
+  if(!loop || loop.length < 3) return null;
+  const pts = loop.map(p=>[Number(p[0]), Number(p[1])]);
+  if(pts.length < 3) return null;
+  const out=[pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const p = pts[i];
+    const prev = out[out.length-1];
+    const dx = p[0]-prev[0], dy = p[1]-prev[1];
+    if(dx*dx + dy*dy > eps*eps) out.push(p);
+  }
+  if(out.length < 3) return null;
+  const first = out[0];
+  const last = out[out.length-1];
+  const dx = first[0]-last[0], dy = first[1]-last[1];
+  if(dx*dx + dy*dy > eps*eps) out.push([first[0], first[1]]);
+  else out[out.length-1] = [first[0], first[1]];
+  if(out.length < 4) return null;
+  return out;
+}
+
+function stripCollinear(loop, eps=1e-10){
+  if(!loop || loop.length < 4) return loop;
+  const n = loop.length-1;
+  const out = [];
+  for(let i=0;i<n;i++){
+    const prev = loop[(i-1+n)%n];
+    const cur = loop[i];
+    const next = loop[(i+1)%n];
+    const ax = cur[0] - prev[0];
+    const ay = cur[1] - prev[1];
+    const bx = next[0] - cur[0];
+    const by = next[1] - cur[1];
+    const cross = ax*by - ay*bx;
+    const dot = ax*bx + ay*by;
+    if(Math.abs(cross) <= eps && dot >= 0) continue;
+    out.push(cur);
+  }
+  if(out.length < 3) return null;
+  out.push([out[0][0], out[0][1]]);
+  return out;
+}
+
+function segmentIntersection(ax,ay,bx,by,cx,cy,dx,dy, eps=1e-9){
+  const rpx = bx-ax, rpy = by-ay;
+  const spx = dx-cx, spy = dy-cy;
+  const denom = (rpx*spy - rpy*spx);
+  if(Math.abs(denom) < eps) return null;
+  const t = ((cx-ax)*spy - (cy-ay)*spx) / denom;
+  const u = ((cx-ax)*rpy - (cy-ay)*rpx) / denom;
+  if(t <= eps || t >= 1-eps || u <= eps || u >= 1-eps) return null;
+  return [ax + t*rpx, ay + t*rpy, t, u];
+}
+
+function splitSelfIntersections(loop, guard=0){
+  if(!loop || loop.length < 4 || guard > 8) return loop ? [loop] : [];
+  const pts = loop.slice(0,-1);
+  const n = pts.length;
+  for(let i=0;i<n;i++){
+    const a0 = pts[i];
+    const a1 = pts[(i+1)%n];
+    for(let j=i+1;j<n;j++){
+      if(Math.abs(i-j) <= 1) continue;
+      if(i===0 && j===n-1) continue;
+      const b0 = pts[j];
+      const b1 = pts[(j+1)%n];
+      const hit = segmentIntersection(a0[0],a0[1],a1[0],a1[1], b0[0],b0[1],b1[0],b1[1]);
+      if(!hit) continue;
+      const ip = [hit[0], hit[1]];
+      const work = pts.slice();
+      work.splice(i+1, 0, ip);
+      let jAdj = j;
+      if(jAdj > i) jAdj += 1;
+      work.splice(jAdj+1, 0, ip);
+      const aStart = i+1;
+      const bStart = jAdj+1;
+      const loop1 = work.slice(aStart, bStart+1);
+      loop1.push([loop1[0][0], loop1[0][1]]);
+      const loop2 = work.slice(bStart).concat(work.slice(0, aStart+1));
+      loop2.push([loop2[0][0], loop2[0][1]]);
+      const out = [];
+      for(const sub of [loop1, loop2]){
+        const cleaned = stripCollinear(sub);
+        if(cleaned && Math.abs(polyArea2D(cleaned)) > 1e-9){
+          out.push(...splitSelfIntersections(cleaned, guard+1));
+        }
+      }
+      return out;
+    }
+  }
+  return [loop];
+}
+
+function normalizeLoopOrientation(loop, ccw=true){
+  if(!loop) return null;
+  const area = polyArea2D(loop);
+  if(ccw && area < 0) return loop.slice().reverse();
+  if(!ccw && area > 0) return loop.slice().reverse();
+  return loop;
+}
+
+function buildLoopRegions(loops){
+  const cleaned = [];
+  for(const loop of loops || []){
+    let pts = normalizeLoopClosed(loop);
+    if(!pts) continue;
+    pts = stripCollinear(pts);
+    if(!pts) continue;
+    const parts = splitSelfIntersections(pts);
+    for(const part of parts){
+      const cleanPart = stripCollinear(part);
+      if(!cleanPart) continue;
+      const area = polyArea2D(cleanPart);
+      if(Math.abs(area) < 1e-8) continue;
+      cleaned.push({
+        pts: cleanPart,
+        area,
+        absArea: Math.abs(area),
+        bounds: polyBounds2D(cleanPart)
+      });
+    }
+  }
+  if(!cleaned.length) return [];
+  cleaned.sort((a,b)=>b.absArea-a.absArea);
+  for(let i=0;i<cleaned.length;i++){
+    const loop = cleaned[i];
+    loop.parent = null;
+    const testPt = loop.pts[0];
+    for(let j=0;j<cleaned.length;j++){
+      if(i===j) continue;
+      const cand = cleaned[j];
+      if(cand.absArea <= loop.absArea) continue;
+      if(testPt[0] < cand.bounds.minx || testPt[0] > cand.bounds.maxx || testPt[1] < cand.bounds.miny || testPt[1] > cand.bounds.maxy) continue;
+      if(pointInPoly(testPt, cand.pts)){
+        if(!loop.parent || cand.absArea < loop.parent.absArea) loop.parent = cand;
+      }
+    }
+  }
+  for(const loop of cleaned){
+    let depth = 0;
+    let cur = loop.parent;
+    while(cur){ depth++; cur = cur.parent; }
+    loop.depth = depth;
+  }
+  const regions = [];
+  const regionForLoop = new Map();
+  for(const loop of cleaned){
+    if(loop.depth % 2 === 0){
+      const outer = normalizeLoopOrientation(loop.pts, true);
+      const region = {outer, holes:[]};
+      regions.push(region);
+      regionForLoop.set(loop, region);
+    }
+  }
+  for(const loop of cleaned){
+    if(loop.depth % 2 === 1){
+      let parent = loop.parent;
+      while(parent && parent.depth % 2 === 1){ parent = parent.parent; }
+      const region = parent ? regionForLoop.get(parent) : null;
+      if(region){
+        region.holes.push(normalizeLoopOrientation(loop.pts, false));
+      }
+    }
+  }
+  return regions;
 }
 
 function lineLineIntersection(ax,ay, bx,by, cx,cy, dx,dy){
@@ -3387,6 +3581,7 @@ const lastLayer = layers - 1;
 
   const order = String(opts.roleOrder||"bottom,walls,infill,top").split(",").map(s=>s.trim()).filter(Boolean);
   const out = [];
+  const holeCountByLayer = [];
 
   for(let L=0; L<layers; L++){
     const zOut = (L+1)*lh;
@@ -3396,21 +3591,9 @@ const lastLayer = layers - 1;
     if(segs.length===0) continue;
     const loops = stitchSegmentsToLoops(segs);
     if(!loops.length) continue;
-    loops.sort((a,b)=>Math.abs(polyArea2D(b))-Math.abs(polyArea2D(a)));
-    const outer = loops[0];
-    const holeLoops = loops.filter((lp, idx)=> idx>0 && polyArea2D(lp) < 0);
-
-    const isPointInPoly = (pt, poly)=>{
-      let inside = false;
-      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
-        const xi = poly[i][0], yi = poly[i][1];
-        const xj = poly[j][0], yj = poly[j][1];
-        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
-          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
-        if(intersect) inside = !inside;
-      }
-      return inside;
-    };
+    const regions = buildLoopRegions(loops);
+    if(!regions.length) continue;
+    holeCountByLayer[L] = regions.reduce((sum, region)=>sum + (region.holes?.length || 0), 0);
 
     const isPointInPoly = (pt, poly)=>{
       let inside = false;
@@ -3445,9 +3628,11 @@ const lastLayer = layers - 1;
           cur = off;
         }
       };
-      emitWallLoop(outer, "wall_outer", -lw);
-      for(const hole of holeLoops){
-        emitWallLoop(hole, "wall_inner", lw);
+      for(const region of regions){
+        emitWallLoop(region.outer, "wall_outer", -lw);
+        for(const hole of region.holes){
+          emitWallLoop(hole, "wall_inner", lw);
+        }
       }
     }
 
@@ -3459,25 +3644,31 @@ const lastLayer = layers - 1;
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
       const pat = roleSolid ? solidPat : infPat;
-      if(pat==="concentric"){
-        const loops2 = genConcentricLoops(outer, spacing);
-        for(const lp of loops2){
-          for(let i=0;i<lp.length;i++){
-            const p=lp[i];
-            fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(roleSolid||"infill")}});
+      for(const region of regions){
+        const holeLoops = region.holes || [];
+        if(pat==="concentric"){
+          const loops2 = genConcentricLoops(region.outer, spacing);
+          const filtered = holeLoops.length
+            ? loops2.filter((lp)=>!holeLoops.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
+            : loops2;
+          for(const lp of filtered){
+            for(let i=0;i<lp.length;i++){
+              const p=lp[i];
+              fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(roleSolid||"infill")}});
+            }
           }
-        }
-      }else{
-        const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-        segA = genInfillSegmentsPattern(outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
-        if(holeLoops.length){
-          segA = segA.filter((s)=>{
-            const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
-            return !holeLoops.some((hole)=>isPointInPoly(mid, hole));
-          });
+        }else{
+          const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
+          segA = genInfillSegmentsPattern(region.outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
+          if(holeLoops.length){
+            segA = segA.filter((s)=>{
+              const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
+              return !holeLoops.some((hole)=>pointInPoly(mid, hole));
+            });
+          }
+          if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, roleSolid || "infill"));
         }
       }
-      if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, roleSolid || "infill"));
 }
 
     for(const r of order){
@@ -3490,6 +3681,16 @@ const lastLayer = layers - 1;
     }
 
     if(out.length > ((opts.maxSegs|0)||240000)) break;
+  }
+  if(out.length){
+    const maxHoles = holeCountByLayer.length ? Math.max(1, ...holeCountByLayer.map(v=>v||0)) : 1;
+    out.overlays = ["featureType", "holeCount"];
+    for(const p of out){
+      if(!p?.meta || p.layer == null) continue;
+      const count = holeCountByLayer[p.layer] || 0;
+      const t = count / maxHoles;
+      p.meta.visual = {field:"holeCount", t};
+    }
   }
   return out;
 }
