@@ -3582,6 +3582,7 @@ const lastLayer = layers - 1;
   const order = String(opts.roleOrder||"bottom,walls,infill,top").split(",").map(s=>s.trim()).filter(Boolean);
   const out = [];
   const holeCountByLayer = [];
+  let prevRegions = null;
 
   for(let L=0; L<layers; L++){
     const zOut = (L+1)*lh;
@@ -3611,6 +3612,41 @@ const lastLayer = layers - 1;
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
     const roleSolid = isBottom ? "bottom" : (isTop ? "top" : null);
+    const supportThresh = 0.5;
+    const pointInRegion = (pt, region)=>{
+      if(!pointInPoly(pt, region.outer)) return false;
+      const holes = region.holes || [];
+      return !holes.some((hole)=>pointInPoly(pt, hole));
+    };
+    const pointSupported = (pt)=>{
+      if(!prevRegions || !prevRegions.length) return false;
+      return prevRegions.some((region)=>pointInRegion(pt, region));
+    };
+    if(!roleSolid){
+      for(const region of regions){
+        const outer = region.outer || [];
+        if(!outer.length){
+          region.supportRole = isTop ? "top" : "bridge";
+          continue;
+        }
+        const samples = [];
+        const centroid = polyCentroid2D(outer);
+        if(centroid) samples.push(centroid);
+        const step = Math.max(1, Math.floor(outer.length / Math.min(12, outer.length)));
+        for(let i=0;i<outer.length;i+=step){
+          samples.push(outer[i]);
+        }
+        if(!samples.length){
+          region.supportRole = isTop ? "top" : "bridge";
+          continue;
+        }
+        const supported = samples.reduce((sum, pt)=>sum + (pointSupported(pt) ? 1 : 0), 0);
+        const ratio = supported / samples.length;
+        if(ratio < supportThresh){
+          region.supportRole = isTop ? "top" : "bridge";
+        }
+      }
+    }
 
     // Walls (include outer loop as first perimeter, then inset)
     const wallsPaths = [];
@@ -3659,38 +3695,38 @@ const lastLayer = layers - 1;
 
     // Infill / solid
     const fillPaths = [];
-    const pct = roleSolid ? 100 : infPct;
-    if(pct>0){
-      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
+    for(const region of regions){
+      const regionRole = roleSolid || region.supportRole || null;
+      const pct = regionRole ? 100 : infPct;
+      if(pct<=0) continue;
+      const spacing = regionRole ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
-      const pat = roleSolid ? solidPat : infPat;
-      for(const region of regions){
-        const holeLoops = region.holes || [];
-        if(pat==="concentric"){
-          const loops2 = genConcentricLoops(region.outer, spacing);
-          const filtered = holeLoops.length
-            ? loops2.filter((lp)=>!holeLoops.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
-            : loops2;
-          for(const lp of filtered){
-            for(let i=0;i<lp.length;i++){
-              const p=lp[i];
-              fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(roleSolid||"infill")}});
-            }
+      const pat = regionRole ? solidPat : infPat;
+      const holeLoops = region.holes || [];
+      if(pat==="concentric"){
+        const loops2 = genConcentricLoops(region.outer, spacing);
+        const filtered = holeLoops.length
+          ? loops2.filter((lp)=>!holeLoops.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
+          : loops2;
+        for(const lp of filtered){
+          for(let i=0;i<lp.length;i++){
+            const p=lp[i];
+            fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(regionRole||"infill")}});
           }
-        }else{
-          const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-          segA = genInfillSegmentsPattern(region.outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
-          if(holeLoops.length){
-            segA = segA.filter((s)=>{
-              const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
-              return !holeLoops.some((hole)=>pointInPoly(mid, hole));
-            });
-          }
-          if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, roleSolid || "infill"));
         }
+      }else{
+        const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
+        segA = genInfillSegmentsPattern(region.outer, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
+        if(holeLoops.length){
+          segA = segA.filter((s)=>{
+            const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
+            return !holeLoops.some((hole)=>pointInPoly(mid, hole));
+          });
+        }
+        if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, regionRole || "infill"));
       }
-}
+    }
 
     for(const r of order){
       if(r==="walls") out.push(...wallsPaths);
@@ -3699,9 +3735,11 @@ const lastLayer = layers - 1;
       else if(r==="infill") out.push(...fillPaths.filter(p=>p.meta?.role==="infill"));
       else if(r==="bottom") out.push(...fillPaths.filter(p=>p.meta?.role==="bottom"));
       else if(r==="top") out.push(...fillPaths.filter(p=>p.meta?.role==="top"));
+      else if(r==="bridge") out.push(...fillPaths.filter(p=>p.meta?.role==="bridge"));
     }
 
     if(out.length > ((opts.maxSegs|0)||240000)) break;
+    prevRegions = regions;
   }
   if(out.length){
     const maxHoles = holeCountByLayer.length ? Math.max(1, ...holeCountByLayer.map(v=>v||0)) : 1;
