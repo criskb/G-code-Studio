@@ -1,6 +1,10 @@
 (function(){
+const ideaNodeUtils = window?.GCODE_STUDIO?.IDEA_NODE_UTILS;
+if(!ideaNodeUtils){
+  throw new Error("IDEA_NODE_UTILS missing. Load /nodes/idea-node-helpers.js before node scripts.");
+}
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
+window.GCODE_STUDIO.IDEA_NODE_UTILS = ideaNodeUtils;
 const {
   simpleNode,
   getMeshInput,
@@ -9,7 +13,7 @@ const {
   simpleReport,
   numOr,
   clamp
-} = window.GCODE_STUDIO.IDEA_NODE_UTILS;
+} = ideaNodeUtils;
 
 function buildPlateMesh(width, depth, height){
   const w = Math.max(1, Number(width || 120));

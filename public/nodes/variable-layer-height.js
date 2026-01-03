@@ -1,7 +1,11 @@
 (function(){
+const ideaNodeUtils = window?.GCODE_STUDIO?.IDEA_NODE_UTILS;
+if(!ideaNodeUtils){
+  throw new Error("IDEA_NODE_UTILS missing. Load /nodes/idea-node-helpers.js before node scripts.");
+}
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
-window.GCODE_STUDIO.IDEA_NODE_UTILS = window.GCODE_STUDIO.IDEA_NODE_UTILS || window.GCODE_STUDIO.IDEA_NODE_UTILS_FALLBACK;
-const { clamp, numOr, getMeshInput, getBounds, simpleNode } = window.GCODE_STUDIO.IDEA_NODE_UTILS;
+window.GCODE_STUDIO.IDEA_NODE_UTILS = ideaNodeUtils;
+const { clamp, numOr, getMeshInput, getBounds, simpleNode } = ideaNodeUtils;
 
 simpleNode({
   name: "Variable Layer Height",
