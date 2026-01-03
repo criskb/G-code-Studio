@@ -473,6 +473,8 @@ function applyGraphBgSettings(){
     "pattern-crosshatch",
     "pattern-diagonal",
     "pattern-squares",
+    "pattern-checker",
+    "pattern-diamond",
     "pattern-none"
   );
   graphBg.classList.add(`pattern-${pattern}`);
