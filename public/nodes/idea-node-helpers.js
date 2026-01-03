@@ -1,9 +1,17 @@
 (function(){
+const IDEA_NODE_UTILS_KEY = "__GCODE_STUDIO_IDEA_NODE_UTILS__";
+const NODE_DEFS_KEY = "__GCODE_STUDIO_NODE_DEFS__";
+const sharedNodeDefs = window[NODE_DEFS_KEY] || window.GCODE_STUDIO?.NODE_DEFS || {};
+window[NODE_DEFS_KEY] = sharedNodeDefs;
+
 const ensureIdeaUtils = (studio, ideaNodeUtils)=>{
   if(!studio) return;
+  if(studio.NODE_DEFS && studio.NODE_DEFS !== sharedNodeDefs){
+    Object.assign(sharedNodeDefs, studio.NODE_DEFS);
+  }
+  studio.NODE_DEFS = sharedNodeDefs;
   studio.IDEA_NODE_UTILS_FALLBACK = studio.IDEA_NODE_UTILS_FALLBACK || ideaNodeUtils;
   studio.IDEA_NODE_UTILS = studio.IDEA_NODE_UTILS || studio.IDEA_NODE_UTILS_FALLBACK;
-  studio.NODE_DEFS = studio.NODE_DEFS || {};
 };
 
 const clamp = (v, min, max)=>Math.max(min, Math.min(max, v));
@@ -26,6 +34,20 @@ function getPathInput(ctx, node, port){
 function getMeshInput(ctx, node, port){
   const inp = ctx.getInput(node.id, port);
   return inp?.mesh || inp?.out || inp || null;
+}
+
+function computeMeshBounds(tris){
+  let minX=Infinity, minY=Infinity, minZ=Infinity;
+  let maxX=-Infinity, maxY=-Infinity, maxZ=-Infinity;
+  for(let i=0;i<tris.length;i+=3){
+    const x = tris[i] ?? 0;
+    const y = tris[i+1] ?? 0;
+    const z = tris[i+2] ?? 0;
+    minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
+  }
+  if(!isFinite(minX)) return null;
+  return { min: {x:minX,y:minY,z:minZ}, max: {x:maxX,y:maxY,z:maxZ} };
 }
 
 function getBounds(mesh){
@@ -111,8 +133,10 @@ const ideaNodeUtils = {
   simpleReport,
   simpleNode
 };
+const sharedIdeaNodeUtils = window[IDEA_NODE_UTILS_KEY] || ideaNodeUtils;
+window[IDEA_NODE_UTILS_KEY] = sharedIdeaNodeUtils;
 let studioRef = window.GCODE_STUDIO || {};
-ensureIdeaUtils(studioRef, ideaNodeUtils);
+ensureIdeaUtils(studioRef, sharedIdeaNodeUtils);
 Object.defineProperty(window, "GCODE_STUDIO", {
   configurable: true,
   get(){
@@ -120,7 +144,7 @@ Object.defineProperty(window, "GCODE_STUDIO", {
   },
   set(next){
     studioRef = next || {};
-    ensureIdeaUtils(studioRef, ideaNodeUtils);
+    ensureIdeaUtils(studioRef, sharedIdeaNodeUtils);
   }
 });
 window.GCODE_STUDIO = studioRef;
