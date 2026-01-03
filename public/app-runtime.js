@@ -1,5 +1,33 @@
 const NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS;
 const UI_NODE_TYPES = new Set(["Studio View", "Preview", "G-code Output"]);
+const EXPECTED_NODE_DEF_COUNT = 94;
+const EXPECTED_NODE_TYPES = [
+  "Preview",
+  "G-code Output",
+  "Printer",
+  "Export",
+  "Import Mesh",
+  "SVG Import",
+  "Path",
+  "Mesh Primitive",
+  "Transform",
+  "Slicer",
+];
+const nodeDefDiagnostics = {
+  total: 0,
+  lowCount: false,
+  missingTypes: [],
+  warned: false,
+};
+function updateNodeDefDiagnostics(){
+  const total = Object.keys(NODE_DEFS || {}).length;
+  const missingTypes = EXPECTED_NODE_TYPES.filter((type)=>!NODE_DEFS?.[type]);
+  const lowCount = total < EXPECTED_NODE_DEF_COUNT;
+  nodeDefDiagnostics.total = total;
+  nodeDefDiagnostics.lowCount = lowCount;
+  nodeDefDiagnostics.missingTypes = missingTypes;
+  return nodeDefDiagnostics;
+}
 
 /* ---------------------------
    Graph evaluation engine
@@ -406,6 +434,17 @@ function nodeCat(def){
 }
 
 function rebuildNodePickerItems(){
+  const diagnostics = updateNodeDefDiagnostics();
+  if((diagnostics.lowCount || diagnostics.missingTypes.length) && !nodeDefDiagnostics.warned){
+    nodeDefDiagnostics.warned = true;
+    const missingText = diagnostics.missingTypes.length
+      ? `Missing types: ${diagnostics.missingTypes.join(", ")}.`
+      : "No core node types missing.";
+    console.warn(
+      `[Node defs] Expected at least ${EXPECTED_NODE_DEF_COUNT} node defs, found ${diagnostics.total}. ${missingText} ` +
+      "Check the DevTools Console for script load errors."
+    );
+  }
   nodePicker.items = Object.entries(NODE_DEFS)
     .filter(([type, def]) => !def?.hidden)
     .map(([type, def]) => ({type, def, cat: nodeCat(def)}))
@@ -580,6 +619,7 @@ npOverlay?.addEventListener("mousedown", (e)=>{
 function renderNodeLibrary(){
   const q = (nodeSearchEl.value||"").trim().toLowerCase();
   nodeListEl.innerHTML = "";
+  const diagnostics = updateNodeDefDiagnostics();
 
   // Category mapping (Comfy-style grouping)
   const catOf = (def)=>{
@@ -620,6 +660,15 @@ function renderNodeLibrary(){
   }
 
   const frag = document.createDocumentFragment();
+  if(diagnostics.lowCount || diagnostics.missingTypes.length){
+    const msg = document.createElement("div");
+    msg.className = "hint";
+    const missingText = diagnostics.missingTypes.length
+      ? `Missing core nodes: ${diagnostics.missingTypes.join(", ")}.`
+      : "Some node scripts may have failed to load.";
+    msg.innerHTML = `<b>Node count looks low</b><div style="margin-top:6px;opacity:.75">Found ${diagnostics.total} nodes, expected ~${EXPECTED_NODE_DEF_COUNT}. ${missingText} Check the DevTools Console for script load errors.</div>`;
+    frag.appendChild(msg);
+  }
   for(const [cat, list] of groups){
     const group = document.createElement("div");
     group.className = "catGroup" + (state.ui.libCollapsed[cat] ? " collapsed" : "");
