@@ -4,16 +4,19 @@ window.GCODE_STUDIO.NODE_DEFS['Export'] = {
     title:"Export", tag:"output",
     uiSchema:SCHEMA_EXPORT,
   desc:"Generate G-code (needs Path + Printer; Rules optional).",
-    inputs: [{name:"path", type:"path"}, {name:"rules", type:"rules"}, {name:"profile", type:"profile"}, {name:"mesh", type:"mesh"}],
+    inputs: [{name:"path", type:"path"}, {name:"toolpath", type:"toolpath"}, {name:"rules", type:"rules"}, {name:"profile", type:"profile"}, {name:"mesh", type:"mesh"}],
     outputs: [{name:"gcode", type:"gcode"}, {name:"path", type:"path"}, {name:"mesh", type:"mesh"}],
     initData: ()=>({ addLayerComments:true, capPreviewChars:200000, fileName:"gcode-studio_output" }),
     render:(node, mount)=>renderSchema(NODE_DEFS[node.type].uiSchema, node, mount),
     evaluate:(node, ctx)=>{
       const pathIn = ctx.getInput(node.id, "path");
+      const toolpathIn = ctx.getInput(node.id, "toolpath");
       const rulesIn = ctx.getInput(node.id, "rules");
       const profIn = ctx.getInput(node.id, "profile");
       const meshIn = ctx.getInput(node.id, "mesh");
-      const path = (pathIn?.out || pathIn?.path || pathIn || []);
+      const toolpath = (toolpathIn?.toolpath || toolpathIn?.out || toolpathIn || null);
+      const toolpathPath = toolpath ? toolpathToPath(toolpath) : null;
+      const path = toolpathPath || (pathIn?.out || pathIn?.path || pathIn || []);
       const profile = (profIn?.profile || profIn || ctx.defaultProfile || null);
       const rules = (rulesIn?.rules || rulesIn || null);
       const mesh = (meshIn?.mesh || meshIn?.out || meshIn || null);
