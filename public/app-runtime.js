@@ -387,12 +387,21 @@ const nodePicker = {
 
 function nodeCat(def){
   const tag = (def.tag||"").toLowerCase();
+  if(tag==="import") return "Import";
   if(tag==="mesh") return "Mesh";
   if(tag==="path") return "Path & Slice";
+  if(tag==="slicer") return "Path & Slice";
+  if(tag==="generator") return "Generators";
   if(tag==="modifier") return "Modifiers";
   if(tag==="rules") return "Rules";
   if(tag==="printer") return "Printer";
   if(tag==="ui") return "UI";
+  if(tag==="analysis") return "Analysis";
+  if(tag==="workflow") return "Workflow";
+  if(tag==="multi-material") return "Multi-Material";
+  if(tag==="gcode") return "G-code";
+  if(tag==="geometry") return "Geometry";
+  if(tag==="creative") return "Creative";
   return "Other";
 }
 
@@ -575,12 +584,21 @@ function renderNodeLibrary(){
   // Category mapping (Comfy-style grouping)
   const catOf = (def)=>{
     const tag = (def.tag||"").toLowerCase();
+    if(tag==="import") return "Import";
     if(tag==="mesh") return "Mesh";
     if(tag==="path") return "Path & Slice";
+    if(tag==="slicer") return "Path & Slice";
+    if(tag==="generator") return "Generators";
     if(tag==="modifier") return "Modifiers";
     if(tag==="rules") return "Rules";
     if(tag==="printer") return "Printer";
     if(tag==="export") return "Export";
+    if(tag==="analysis") return "Analysis";
+    if(tag==="workflow") return "Workflow";
+    if(tag==="multi-material") return "Multi-Material";
+    if(tag==="gcode") return "G-code";
+    if(tag==="geometry") return "Geometry";
+    if(tag==="creative") return "Creative";
     return "Other";
   };
 
