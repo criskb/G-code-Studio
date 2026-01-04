@@ -3609,6 +3609,19 @@ const lastLayer = layers - 1;
     };
     const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
 
+    const isPointInPoly = (pt, poly)=>{
+      let inside = false;
+      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+        const xi = poly[i][0], yi = poly[i][1];
+        const xj = poly[j][0], yj = poly[j][1];
+        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    };
+    const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
+
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
     const roleSolid = isBottom ? "bottom" : (isTop ? "top" : null);
@@ -3651,19 +3664,6 @@ const lastLayer = layers - 1;
     // Walls (include outer loop as first perimeter, then inset)
     const wallsPaths = [];
     if(per>0){
-      const emitCenterline = (outerLoop, innerLoop, role)=>{
-        if(!outerLoop || !innerLoop) return;
-        const n = Math.min(outerLoop.length, innerLoop.length);
-        if(n < 2) return;
-        for(let i=0;i<n;i++){
-          const a = outerLoop[i];
-          const b = innerLoop[i];
-          if(!a || !b) continue;
-          const x = (a[0] + b[0]) * 0.5;
-          const y = (a[1] + b[1]) * 0.5;
-          wallsPaths.push({x, y, z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role}});
-        }
-      };
       const emitWallLoop = (poly, loopRole, offsetDir)=>{
         let cur = poly;
         for(let k=0;k<per;k++){
@@ -3672,38 +3672,25 @@ const lastLayer = layers - 1;
             const r = (k===0) ? loopRole : "wall_inner";
             wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r}});
           }
-          if(k === per-1) break;
           const off = offsetPolyMiter(cur, offsetDir);
           if(!off) break;
-          if(opts.detectThinWalls){
-            const next = offsetPolyMiter(off, offsetDir);
-            if(!next){
-              emitCenterline(cur, off, "gap_fill");
-              break;
-            }
-          }
           cur = off;
         }
       };
-      for(const region of regions){
-        emitWallLoop(region.outer, "wall_outer", -lw);
-        for(const hole of region.holes){
-          emitWallLoop(hole, "wall_inner", lw);
-        }
+      emitWallLoop(outer, "wall_outer", -lw);
+      for(const hole of holeLoops){
+        emitWallLoop(hole, "wall_inner", lw);
       }
     }
 
     // Infill / solid
     const fillPaths = [];
-    for(const region of regions){
-      const regionRole = roleSolid || region.supportRole || null;
-      const pct = regionRole ? 100 : infPct;
-      if(pct<=0) continue;
-      const spacing = regionRole ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
+    const pct = roleSolid ? 100 : infPct;
+    if(pct>0){
+      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
-      const pat = regionRole ? solidPat : infPat;
-      const holeLoops = region.holes || [];
+      const pat = roleSolid ? solidPat : infPat;
       if(pat==="concentric"){
         const loops2 = genConcentricLoops(region.outer, spacing);
         const filtered = holeLoops.length
@@ -3717,14 +3704,13 @@ const lastLayer = layers - 1;
         }
       }else{
         const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-        segA = genInfillSegmentsPattern(region.outer, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
+        segA = genInfillSegmentsPattern(outer, spacing, a1, serp, (roleSolid||"infill"), pat, L, phase);
         if(holeLoops.length){
           segA = segA.filter((s)=>{
             const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
-            return !holeLoops.some((hole)=>pointInPoly(mid, hole));
+            return !holeLoops.some((hole)=>isPointInPoly(mid, hole));
           });
         }
-        if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, regionRole || "infill"));
       }
     }
 
