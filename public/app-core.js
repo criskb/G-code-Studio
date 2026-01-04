@@ -76,6 +76,65 @@ function summarizeToolpath(path){
   }
   return { length, travelLength, printLength };
 }
+
+function toolpathFromPath(path, profile){
+  const p = profile || defaultPrinterFallback();
+  const raw = Array.isArray(path) ? path : [];
+  const pre = [];
+  for(const pt of raw){
+    if(!pt) continue;
+    const x = isFinite(pt.x) ? pt.x : (isFinite(pt.X) ? pt.X : NaN);
+    const y = isFinite(pt.y) ? pt.y : (isFinite(pt.Y) ? pt.Y : NaN);
+    const z = isFinite(pt.z) ? pt.z : 0;
+    if(!isFinite(x) || !isFinite(y)) continue;
+    pre.push({...pt, x, y, z});
+  }
+  const layerHDefault = pickLayerHeight(pre, null);
+  const filamentArea = Math.PI * Math.pow((p.filamentDia||1.75)/2, 2);
+  const lwDef = Math.max(0.2, Number(p.lineWidth||0.45));
+  const toM = (pt)=>{
+    const m = toMachineXY(pt.x, pt.y, p);
+    return {...pt, X:m.X, Y:m.Y};
+  };
+  const machinePath = pre.map(toM);
+  const layers = [];
+  let curLayer = null;
+  let curIdx = -1;
+  let eAbs = 0;
+  let length = 0;
+  const getWH = (pt)=>{
+    const w = isFinite(pt.meta?.width) ? Number(pt.meta.width) : lwDef;
+    const h = isFinite(pt.meta?.layerHeight) ? Number(pt.meta.layerHeight) : layerHDefault;
+    return [w,h];
+  };
+  for(let i=1;i<machinePath.length;i++){
+    const a = machinePath[i-1];
+    const b = machinePath[i];
+    const lh = layerHDefault;
+    const lay = inferLayer(b, lh);
+    if(lay !== curIdx){
+      curIdx = lay;
+      curLayer = { z: +((lay+1)*lh).toFixed(4), moves: [] };
+      layers.push(curLayer);
+    }
+    const dx=b.X-a.X, dy=b.Y-a.Y, dz=b.z-a.z;
+    const dist = Math.sqrt(dx*dx+dy*dy+dz*dz);
+    if(!isFinite(dist) || dist <= 1e-9) continue;
+    length += dist;
+    if(b.travel){
+      curLayer.moves.push({ kind:"travel", x:b.X, y:b.Y, z:b.z, f: Number(p.travelSpeed||p.speedTravel||6000), meta:{ feature:"travel" } });
+      continue;
+    }
+    const [w,h] = getWH(b);
+    const vol = Math.max(0.000001, w*h) * dist;
+    const dE = vol / filamentArea;
+    eAbs += dE;
+    const feat = String(b.role || b.meta?.role || "infill");
+    const fPrint = Number(p.speedPrint||p.wallSpeed||1800);
+    curLayer.moves.push({ kind:"extrude", x:b.X, y:b.Y, z:b.z, e:eAbs, f: fPrint, meta:{ feature: feat, width:w, height:h, tool:0 } });
+  }
+  return { units:"mm", absoluteExtrusion:true, layers, stats:{ length_mm:length, extruded_mm3:0, time_s_est:0 } };
+}
 function simpleReport(title, details){
   return { title, ...details, createdAt: new Date().toISOString() };
 }
@@ -288,8 +347,8 @@ const previewFilter = {
   scrub: 100
 };
 const previewLineSettings = {
-  mode: "thin",
-  width: 0.6
+  mode: "hd",
+  width: 1.0
 };
 const previewScrubPlayback = {
   playing: false,
@@ -614,7 +673,7 @@ const prevMeshAlphaValEl = document.getElementById("prevMeshAlphaVal");
 const prevViewerEl = document.getElementById("prevViewer");
 
 const previewMeshSettings = {
-  render: "wire", // wire | solid | both | off
+  render: "off", // wire | solid | both | off
   alpha: 0.28,
   viewer: "gl" // gl | mv
 };
@@ -2622,7 +2681,7 @@ function surfaceRasterPath(mesh, opts, layerHeightHint=0.2, maxPtsOverride=null)
   if(v1 < v0){ const t=v0; v0=v1; v1=t; }
 
   const spacing = Math.max(0.05, Number(opts.spacing||1.0));
-  const step = Math.max(0.05, Number(opts.step||0.5));
+  const step = Math.max(0.05, Math.min(Number(opts.step||0.5), Number(opts.layerHeight||layerHeightHint)*0.5));
   const zOff = Number(opts.zOffset||0);
   const serp = (opts.serpentine !== false);
   const maxPts = Math.max(1000, Number(maxPtsOverride ?? opts.maxPoints ?? 180000));
@@ -2633,9 +2692,10 @@ function surfaceRasterPath(mesh, opts, layerHeightHint=0.2, maxPtsOverride=null)
   // Ensure mesh has an index for meshTopZ
   if(!mesh.index) buildMeshIndex(mesh, Number(opts.cellSize||10));
 
+  const lw = Math.max(0.2, Number(opts.lineWidth||0.45));
   const mkPt = (x,y,z, travel=false)=>({
     x,y,z,
-    meta: { layerHeight: layerHeightHint, travel }
+    meta: { layerHeight: layerHeightHint, width: lw, height: layerHeightHint, role: travel ? undefined : "infill", travel }
   });
 
   let v = v0;
@@ -2685,6 +2745,106 @@ function surfaceRasterPath(mesh, opts, layerHeightHint=0.2, maxPtsOverride=null)
 
     reverse = !reverse;
     v += spacing;
+  }
+
+  return out;
+}
+
+function surfaceRasterFullPath(mesh, opts){
+  const b = mesh.bounds || computeMeshBounds(mesh.tris);
+  const ang = (Number(opts.angleDeg||0) * Math.PI/180);
+  const uv = rotatedUVBounds(b, ang);
+  const margin = Number(opts.margin||0);
+  let u0 = uv.umin + margin, u1 = uv.umax - margin;
+  let v0 = uv.vmin + margin, v1 = uv.vmax - margin;
+  if(u1 < u0){ const t=u0; u0=u1; u1=t; }
+  if(v1 < v0){ const t=v0; v0=v1; v1=t; }
+
+  const lh = Math.max(0.05, Number(opts.layerHeight||0.2));
+  const topN = Math.max(0, Math.floor(opts.topLayers||0));
+  const botN = Math.max(0, Math.floor(opts.bottomLayers||0));
+  const spacing = Math.max(0.05, Number(opts.spacing||1.0));
+  const step = Math.max(0.05, Math.min(Number(opts.step||0.5), lh*0.5));
+  const serp = (opts.serpentine !== false);
+  const maxPts = Math.max(2000, Number(opts.maxPts||200000));
+
+  const zMin = (b.minz ?? (b.min ? b.min.z : undefined));
+  const zMax = (b.maxz ?? (b.max ? b.max.z : undefined));
+  if(!isFinite(zMin) || !isFinite(zMax)) return [];
+  const height = Math.max(0, zMax - zMin);
+  const layers = Math.min(Math.max(1, Math.floor(height / lh + 1e-6)), Math.max(1, (opts.maxLayers|0)||900));
+  const lastLayer = layers - 1;
+
+  if(!mesh.index) buildMeshIndex(mesh, Number(opts.cellSize||10));
+
+  const out = [];
+  let reverse = false;
+  const lw = Math.max(0.2, Number(opts.lineWidth||0.45));
+  const mkPt = (x,y,z, layer, role, travel)=>({ x,y,z, layer, travel, meta:{ layerHeight:lh, width: lw, height: lh, role }});
+
+  for(let L=0; L<layers; L++){
+    const zOut = (L+1)*lh;
+    const roleSolid = (L < botN) ? "bottom" : (L >= (lastLayer - topN + 1) ? "top" : null);
+    const roleHere = roleSolid || "infill";
+    let v = v0;
+    while(v <= v1 + 1e-9){
+      const line = [];
+      for(let u=u0; u <= u1 + 1e-9; u += step){
+        const x = u*uv.ux + v*uv.vx;
+        const y = u*uv.uy + v*uv.vy;
+        const zSurf = meshTopZ(mesh, x, y);
+        if(zSurf==null || !isFinite(zSurf)){ line.push(null); }
+        else {
+          const zO = zOut;
+          const zTop = zSurf + (opts.zOffset||0);
+          const lh2 = lh * 0.2;
+          const near = Math.abs(zO - zTop) <= lh * 0.35;
+          if(zO <= zTop - lh2){
+            line.push([x,y,zO, "infill"]);
+          } else if(near){
+            line.push([x,y,zO, "top"]);
+          } else {
+            line.push(null);
+          }
+        }
+        if(line.length > 300000) break;
+      }
+      if(serp && reverse) line.reverse();
+
+      let seg = [];
+      const flushSeg = ()=>{
+        if(seg.length >= 2){
+          const start = seg[0];
+          const sRole = (start[3] || roleHere);
+          if(out.length){
+            out.push(mkPt(start[0], start[1], start[2], L, sRole, true));
+            for(let k=1;k<seg.length;k++){
+              const p = seg[k];
+              const rHere = (p[3] || sRole);
+              out.push(mkPt(p[0], p[1], p[2], L, rHere, false));
+            }
+          } else {
+            for(let k=0;k<seg.length;k++){
+              const p = seg[k];
+              const rHere = (p[3] || sRole);
+              out.push(mkPt(p[0], p[1], p[2], L, rHere, false));
+            }
+          }
+        }
+        seg = [];
+      };
+      for(let i=0;i<line.length;i++){
+        const p = line[i];
+        if(p) seg.push(p);
+        else flushSeg();
+        if(out.length >= maxPts) break;
+      }
+      flushSeg();
+      if(out.length >= maxPts) break;
+      reverse = !reverse;
+      v += spacing;
+    }
+    if(out.length >= maxPts) break;
   }
 
   return out;
@@ -2979,14 +3139,96 @@ function triPlaneZSegments(tris, z, eps=1e-9){
   return segs;
 }
 
+function buildZBuckets(tris, meshMinZ, layerHeight, layers){
+  const buckets = new Array(layers);
+  for(let L=0; L<layers; L++) buckets[L] = [];
+  for(let i=0;i<tris.length;i+=9){
+    const az=tris[i+2], bz=tris[i+5], cz=tris[i+8];
+    const tMin = Math.min(az,bz,cz);
+    const tMax = Math.max(az,bz,cz);
+    let start = Math.floor((tMin - meshMinZ) / layerHeight);
+    let end = Math.ceil((tMax - meshMinZ) / layerHeight);
+    if(!isFinite(start) || !isFinite(end)) continue;
+    start = Math.max(0, Math.min(layers-1, start));
+    end = Math.max(0, Math.min(layers-1, end));
+    for(let L=start; L<=end; L++) buckets[L].push(i);
+  }
+  return buckets;
+}
+
+function triPlaneZSegmentsBucket(tris, z, triOffsets, eps=1e-9){
+  const segs = [];
+  for(let idx=0; idx<triOffsets.length; idx++){
+    const i = triOffsets[idx];
+    const ax=tris[i],   ay=tris[i+1], az=tris[i+2];
+    const bx=tris[i+3], by=tris[i+4], bz=tris[i+5];
+    const cx=tris[i+6], cy=tris[i+7], cz=tris[i+8];
+    const minz = Math.min(az,bz,cz);
+    const maxz = Math.max(az,bz,cz);
+    if(z < minz-eps || z > maxz+eps) continue;
+    const pts = [];
+    function edge(px,py,pz, qx,qy,qz){
+      const dz = qz - pz;
+      if(Math.abs(dz) < eps) return;
+      const t = (z - pz) / dz;
+      if(t >= -eps && t <= 1+eps){
+        const x = px + (qx-px)*t;
+        const y = py + (qy-py)*t;
+        pts.push([x,y]);
+      }
+    }
+    edge(ax,ay,az, bx,by,bz);
+    edge(bx,by,bz, cx,cy,cz);
+    edge(cx,cy,cz, ax,ay,az);
+    if(pts.length >= 2){
+      let p0=pts[0], p1=pts[1];
+      if(pts.length>2){
+        let best=[p0,p1], bestD=-1;
+        for(let a=0;a<pts.length;a++){
+          for(let b=a+1;b<pts.length;b++){
+            const dx=pts[a][0]-pts[b][0], dy=pts[a][1]-pts[b][1];
+            const d=dx*dx+dy*dy;
+            if(d>bestD){ bestD=d; best=[pts[a],pts[b]]; }
+          }
+        }
+        p0=best[0]; p1=best[1];
+      }
+      const dx=p0[0]-p1[0], dy=p0[1]-p1[1];
+      if((dx*dx+dy*dy) > 1e-12){
+        segs.push([p0[0],p0[1], p1[0],p1[1]]);
+      }
+    }
+  }
+  return segs;
+}
+
 function _keyXY(x,y, q=1e-4){
   const kx = Math.round(x/q);
   const ky = Math.round(y/q);
   return kx + "," + ky;
 }
 
+function normalizeSegments(segs, q=1e-4, minLen=0){
+  const snap = new Map();
+  function sp(x,y){
+    const k=_keyXY(x,y,q);
+    let v=snap.get(k);
+    if(!v){ v=[Math.round(x/q)*q, Math.round(y/q)*q]; snap.set(k,v); }
+    return v;
+  }
+  const out=[];
+  for(const s of segs){
+    const a=sp(s[0],s[1]);
+    const b=sp(s[2],s[3]);
+    const dx=a[0]-b[0], dy=a[1]-b[1];
+    const d2 = (dx*dx+dy*dy);
+    const min2 = Math.max(q*q*1e-2, (minLen>0 ? (minLen*minLen) : 0));
+    if(d2 > min2) out.push([a[0],a[1], b[0],b[1]]);
+  }
+  return out;
+}
+
 function stitchSegmentsToLoops(segs, q=1e-4){
-  // Build adjacency map endpoint-> list of segment indices + which end
   const adj = new Map();
   const used = new Array(segs.length).fill(false);
   function add(key, idx, end){
@@ -3005,7 +3247,6 @@ function stitchSegmentsToLoops(segs, q=1e-4){
     if(used[i]) continue;
     used[i]=true;
     const s=segs[i];
-    // Start polyline from s[0]->s[1]
     let pts=[[s[0],s[1]],[s[2],s[3]]];
     let endKey=_keyXY(s[2],s[3],q);
     const startKey=_keyXY(s[0],s[1],q);
@@ -3014,28 +3255,38 @@ function stitchSegmentsToLoops(segs, q=1e-4){
     while(guard++ < 20000){
       if(endKey === startKey) break;
       const options = adj.get(endKey) || [];
-      let picked=null;
+      let best=null, bestScore=Infinity, bestLen=-Infinity;
+      const pA=pts[pts.length-2];
+      const pB=pts[pts.length-1];
+      const vx=pB[0]-pA[0], vy=pB[1]-pA[1];
       for(const [si,end] of options){
         if(used[si]) continue;
-        picked=[si,end]; break;
+        const ss=segs[si];
+        const nx = (end===0)? ss[2] : ss[0];
+        const ny = (end===0)? ss[3] : ss[1];
+        const wx = nx - pB[0];
+        const wy = ny - pB[1];
+        const lv = Math.hypot(vx,vy) || 1;
+        const lw = Math.hypot(wx,wy) || 1;
+        const dot = (vx*wx + vy*wy) / (lv*lw);
+        const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
+        const len2 = (ss[0]-ss[2])*(ss[0]-ss[2]) + (ss[1]-ss[3])*(ss[1]-ss[3]);
+        const score = ang;
+        if(score < bestScore || (Math.abs(score-bestScore)<1e-6 && len2>bestLen)){
+          best=[si,end,nx,ny]; bestScore=score; bestLen=len2;
+        }
       }
-      if(!picked) break;
-      const [si,end] = picked;
+      if(!best) break;
+      const [si,end,nx,ny] = best;
       used[si]=true;
-      const ss=segs[si];
-      // If we arrived at endpoint 'end', we need to append the opposite endpoint
-      const nx = (end===0)? ss[2] : ss[0];
-      const ny = (end===0)? ss[3] : ss[1];
       pts.push([nx,ny]);
       endKey=_keyXY(nx,ny,q);
     }
 
-    // close if last matches first
     const dx=pts[0][0]-pts[pts.length-1][0];
     const dy=pts[0][1]-pts[pts.length-1][1];
     const closed = (dx*dx+dy*dy) <= (q*q*4);
     if(closed && pts.length>=4){
-      // normalize closure
       pts[pts.length-1]=pts[0];
       loops.push(pts);
     }
@@ -3130,6 +3381,128 @@ function stripCollinear(loop, eps=1e-10){
   if(out.length < 3) return null;
   out.push([out[0][0], out[0][1]]);
   return out;
+}
+
+function smoothClosedPoly(poly, k=0){
+  const s = Math.max(0, Number(k||0));
+  if(!poly || poly.length<4 || s<=0) return poly;
+  let pts = normalizeLoopClosed(poly);
+  if(!pts) return poly;
+  const iters = Math.min(10, Math.max(1, Math.floor(s)));
+  const alpha = Math.min(0.5, s * 0.15);
+  for(let t=0;t<iters;t++){
+    const n = pts.length-1;
+    const out = new Array(n+1);
+    for(let i=0;i<n;i++){
+      const prev = pts[(i-1+n)%n];
+      const cur = pts[i];
+      const next = pts[(i+1)%n];
+      const x = cur[0]*(1-alpha) + ((prev[0]+next[0])*0.5)*alpha;
+      const y = cur[1]*(1-alpha) + ((prev[1]+next[1])*0.5)*alpha;
+      out[i] = [x,y];
+    }
+    out[n] = [out[0][0], out[0][1]];
+    pts = out;
+  }
+  const cleaned = stripCollinear(pts);
+  return cleaned || pts;
+}
+
+function simplifyClosedPoly(poly, eps=0){
+  const e = Math.max(0, Number(eps||0));
+  if(!poly || poly.length<4 || e<=0) return poly;
+  const n = poly.length-1;
+  const pts = poly.slice(0,n);
+  const keep = new Array(n).fill(false);
+  keep[0]=true; keep[n-1]=true;
+  function d2(a,b,c){
+    const ax=pts[a][0], ay=pts[a][1];
+    const bx=pts[b][0], by=pts[b][1];
+    const cx=pts[c][0], cy=pts[c][1];
+    const abx=bx-ax, aby=by-ay;
+    const acx=cx-ax, acy=cy-ay;
+    const ab2=abx*abx+aby*aby || 1e-9;
+    const t=((acx*abx+acy*aby)/ab2);
+    let px=ax, py=ay;
+    if(t<=0){ px=ax; py=ay; }
+    else if(t>=1){ px=bx; py=by; }
+    else { px=ax+abx*t; py=ay+aby*t; }
+    const dx=cx-px, dy=cy-py;
+    return dx*dx+dy*dy;
+  }
+  const stack=[[0,n-1]];
+  const th=e*e;
+  while(stack.length){
+    const [a,b]=stack.pop();
+    let maxD=-1, idx=-1;
+    for(let i=a+1;i<b;i++){
+      const dd=d2(a,b,i);
+      if(dd>maxD){ maxD=dd; idx=i; }
+    }
+    if(maxD>th){
+      keep[idx]=true;
+      stack.push([a,idx],[idx,b]);
+    }else{
+      keep[a]=true; keep[b]=true;
+    }
+  }
+  const out=[];
+  for(let i=0;i<n;i++){ if(keep[i]) out.push(pts[i]); }
+  if(out.length<3) return poly;
+  out.push([out[0][0], out[0][1]]);
+  return out;
+}
+
+function rotateClosedLoop(loop, startIndex){
+  if(!loop || loop.length<4) return loop;
+  const n = loop.length-1;
+  const si = Math.max(0, Math.min(n-1, startIndex|0));
+  const out = [];
+  for(let i=0;i<n;i++) out.push(loop[(si+i)%n]);
+  out.push([out[0][0], out[0][1]]);
+  return out;
+}
+
+function seamStartIndex(loop, mode, lastPt){
+  if(!loop || loop.length<4) return 0;
+  const n = loop.length-1;
+  const c = polyCentroid2D(loop);
+  let bestIdx = 0;
+  if(mode === "rear"){
+    let bestY = -Infinity;
+    for(let i=0;i<n;i++){
+      const p=loop[i];
+      if(p[1] > bestY){ bestY=p[1]; bestIdx=i; }
+    }
+    return bestIdx;
+  }
+  if(mode === "random"){
+    return Math.floor(Math.random()*n) % n;
+  }
+  if(mode === "aligned"){
+    // choose vertex whose angle from centroid is closest to 0° (along +X)
+    let best = Infinity;
+    for(let i=0;i<n;i++){
+      const p=loop[i];
+      const ang = Math.atan2(p[1]-c[1], p[0]-c[0]);
+      const score = Math.abs(ang);
+      if(score < best){ best=score; bestIdx=i; }
+    }
+    return bestIdx;
+  }
+  if(mode === "nearest" && lastPt){
+    let best = Infinity;
+    const lx = lastPt.x ?? lastPt.X ?? 0;
+    const ly = lastPt.y ?? lastPt.Y ?? 0;
+    for(let i=0;i<n;i++){
+      const p=loop[i];
+      const dx=p[0]-lx, dy=p[1]-ly;
+      const d=dx*dx+dy*dy;
+      if(d<best){ best=d; bestIdx=i; }
+    }
+    return bestIdx;
+  }
+  return 0;
 }
 
 function segmentIntersection(ax,ay,bx,by,cx,cy,dx,dy, eps=1e-9){
@@ -3266,7 +3639,7 @@ function lineLineIntersection(ax,ay, bx,by, cx,cy, dx,dy){
   return [ax + t*rpx, ay + t*rpy];
 }
 
-function offsetPolyMiter(poly, offset){
+function offsetPolyMiter(poly, offset, miterLimit=1.5){
   // poly is closed with last==first
   if(!poly || poly.length<4) return null;
   const area = polyArea2D(poly);
@@ -3302,8 +3675,19 @@ function offsetPolyMiter(poly, offset){
 
     let ip = lineLineIntersection(a1x,a1y,b1x,b1y, a2x,a2y,b2x,b2y);
     if(!ip){
-      // fallback: shift vertex
       ip = [p1[0] + (n1x+n2x)*0.5*d, p1[1] + (n1y+n2y)*0.5*d];
+    }
+    const u1x = e1x/(l1||1), u1y = e1y/(l1||1);
+    const u2x = e2x/(l2||1), u2y = e2y/(l2||1);
+    const dot = Math.max(-1, Math.min(1, u1x*u2x + u1y*u2y));
+    const theta = Math.acos(dot);
+    const sinHalf = Math.max(1e-6, Math.sin(theta*0.5));
+    const mLen = Math.abs(d) / sinHalf;
+    const limit = Math.abs(d) * Math.max(1.0, miterLimit);
+    const dxm = ip[0] - p1[0];
+    const dym = ip[1] - p1[1];
+    if((dxm*dxm + dym*dym) > (limit*limit) || mLen > limit){
+      ip = [(b1x + a2x) * 0.5, (b1y + a2y) * 0.5];
     }
     out.push(ip);
   }
@@ -3557,7 +3941,9 @@ function roleFlowFor(role, o){
   const ang0 = (Number(opts.infillAngle||0) * Math.PI/180);
   const serp = !!opts.serpentine;
   const brick = !!opts.brickLayer;
-  const solidPat = String(opts.solidPattern || opts.infillPattern || "lines");
+  const solidPat = (opts.solidPattern != null && String(opts.solidPattern).trim() !== "")
+    ? String(opts.solidPattern)
+    : "concentric";
   const infPat = String(opts.infillPattern || "lines");
 
 const b = mesh.bounds || computeMeshBounds(mesh.tris);
@@ -3577,6 +3963,7 @@ const eps = 1e-6;
 
 const rawLayers = Math.max(1, Math.floor(height / lh + 1e-6));
 const layers = Math.min(Math.max(1, rawLayers), Math.max(1, (opts.maxLayers|0)||600));
+const zBuckets = buildZBuckets(mesh.tris, meshMinZ, lh, layers);
 const lastLayer = layers - 1;
 
   const order = String(opts.roleOrder||"bottom,walls,infill,top").split(",").map(s=>s.trim()).filter(Boolean);
@@ -3588,26 +3975,29 @@ const lastLayer = layers - 1;
     const zOut = (L+1)*lh;
     let zPlane = meshMinZ + zOut - eps;
     zPlane = Math.min(meshMaxZ - eps, Math.max(meshMinZ + eps, zPlane));
-    const segs = triPlaneZSegments(mesh.tris, zPlane);
+    let segs = triPlaneZSegmentsBucket(mesh.tris, zPlane, zBuckets[L]);
+    segs = normalizeSegments(segs, 1e-4, Number(opts.minSegmentLen||0));
     if(segs.length===0) continue;
-    const loops = stitchSegmentsToLoops(segs);
+    const loops = stitchSegmentsToLoops(segs, 1e-4);
     if(!loops.length) continue;
+    if(Number(opts.pathSmoothing||0) > 0){
+      for(let i=0;i<loops.length;i++){
+        const sm = smoothClosedPoly(loops[i], Number(opts.pathSmoothing||0));
+        if(sm && sm.length>=4) loops[i] = sm;
+      }
+    }
+    if(Number(opts.maxChordError||0) > 0){
+      const eps = Number(opts.maxChordError||0) * (opts.preserveArcs ? 0.6 : 1.0);
+      for(let i=0;i<loops.length;i++){
+        const sp = simplifyClosedPoly(loops[i], eps);
+        if(sp && sp.length>=4) loops[i] = sp;
+      }
+    }
     const regions = buildLoopRegions(loops);
     if(!regions.length) continue;
     holeCountByLayer[L] = regions.reduce((sum, region)=>sum + (region.holes?.length || 0), 0);
 
-    const isPointInPoly = (pt, poly)=>{
-      let inside = false;
-      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
-        const xi = poly[i][0], yi = poly[i][1];
-        const xj = poly[j][0], yj = poly[j][1];
-        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
-          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
-        if(intersect) inside = !inside;
-      }
-      return inside;
-    };
-    const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
+    
 
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
@@ -3650,6 +4040,7 @@ const lastLayer = layers - 1;
 
     // Walls (include outer loop as first perimeter, then inset)
     const wallsPaths = [];
+    let lastWallPoint = wallsPaths.length ? wallsPaths[wallsPaths.length-1] : null;
     if(per>0){
       const emitCenterline = (outerLoop, innerLoop, role)=>{
         if(!outerLoop || !innerLoop) return;
@@ -3665,18 +4056,24 @@ const lastLayer = layers - 1;
         }
       };
       const emitWallLoop = (poly, loopRole, offsetDir)=>{
-        let cur = poly;
+        let base = normalizeLoopClosed(poly);
+        const seamIdx = seamStartIndex(base, String(opts.seamMode||"nearest"), lastWallPoint);
+        base = rotateClosedLoop(base, seamIdx);
+        let cur = offsetPolyMiter(base, offsetDir*0.5, Number(opts.cornerMiterLimit||1.5)) || base;
         for(let k=0;k<per;k++){
           for(let i=0;i<cur.length;i++){
             const p=cur[i];
             const r = (k===0) ? loopRole : "wall_inner";
-            wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r}});
+            wallsPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:r, width:lw, height:lh}});
           }
+          lastWallPoint = wallsPaths[wallsPaths.length-1] || lastWallPoint;
           if(k === per-1) break;
-          const off = offsetPolyMiter(cur, offsetDir);
+          const offRaw = offsetPolyMiter(cur, offsetDir, Number(opts.cornerMiterLimit||1.5));
+          const off = offRaw ? stripCollinear(offRaw) : null;
           if(!off) break;
           if(opts.detectThinWalls){
-            const next = offsetPolyMiter(off, offsetDir);
+            const nextRaw = offsetPolyMiter(off, offsetDir, Number(opts.cornerMiterLimit||1.5));
+            const next = nextRaw ? stripCollinear(nextRaw) : null;
             if(!next){
               emitCenterline(cur, off, "gap_fill");
               break;
@@ -3686,8 +4083,19 @@ const lastLayer = layers - 1;
         }
       };
       for(const region of regions){
-        emitWallLoop(region.outer, "wall_outer", -lw);
-        for(const hole of region.holes){
+        let outerSrc = region.outer;
+        if(L===0 && Number(opts.elephantFootComp||0) > 0){
+          const ef = offsetPolyMiter(outerSrc, -Number(opts.elephantFootComp||0), Number(opts.cornerMiterLimit||1.5));
+          const efClean = ef ? stripCollinear(ef) : null;
+          if(efClean && efClean.length>=4) outerSrc = efClean;
+        }
+        emitWallLoop(outerSrc, "wall_outer", -lw);
+        for(let hole of region.holes){
+          if(L===0 && Number(opts.elephantFootComp||0) > 0){
+            const eh = offsetPolyMiter(hole, +Number(opts.elephantFootComp||0), Number(opts.cornerMiterLimit||1.5));
+            const ehClean = eh ? stripCollinear(eh) : null;
+            if(ehClean && ehClean.length>=4) hole = ehClean;
+          }
           emitWallLoop(hole, "wall_inner", lw);
         }
       }
@@ -3704,27 +4112,48 @@ const lastLayer = layers - 1;
       let segA = [];
       const pat = regionRole ? solidPat : infPat;
       const holeLoops = region.holes || [];
+      const overPct = clamp(Number(opts.wallOverlap||0), 0, 50) * 0.01;
+      const skinPct = clamp(Number(opts.skinOverlap||0), 0, 50) * 0.01;
+      const insetDist = (per>0 ? (per*lw) : 0) + (regionRole ? lw*(0.4 + skinPct) : infillLW*(0.45 + overPct));
+      const infOuterRaw = offsetPolyMiter(region.outer, -insetDist, Number(opts.cornerMiterLimit||1.5));
+      const infOuter = infOuterRaw ? stripCollinear(infOuterRaw) : null;
+      const expHoles = holeLoops.map(h=>{
+        const r = offsetPolyMiter(h, +insetDist, Number(opts.cornerMiterLimit||1.5));
+        return r ? stripCollinear(r) : h;
+      });
       if(pat==="concentric"){
-        const loops2 = genConcentricLoops(region.outer, spacing);
-        const filtered = holeLoops.length
-          ? loops2.filter((lp)=>!holeLoops.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
+        const loops2 = genConcentricLoops(infOuter || region.outer, spacing);
+        const filtered = expHoles.length
+          ? loops2.filter((lp)=>!expHoles.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
           : loops2;
         for(const lp of filtered){
           for(let i=0;i<lp.length;i++){
             const p=lp[i];
-            fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(regionRole||"infill")}});
+            const wHere = regionRole ? lw : infillLW;
+            fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(regionRole||"infill"), width:wHere, height:lh}});
           }
         }
       }else{
         const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-        segA = genInfillSegmentsPattern(region.outer, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
-        if(holeLoops.length){
+        const basePoly = infOuter || region.outer;
+        segA = genInfillSegmentsPattern(basePoly, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
+        if(expHoles.length || infOuter){
           segA = segA.filter((s)=>{
             const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
-            return !holeLoops.some((hole)=>pointInPoly(mid, hole));
+            const inside = infOuter ? pointInPoly(mid, infOuter) : true;
+            const notHole = !expHoles.some((hole)=>pointInPoly(mid, hole));
+            return inside && notHole;
           });
         }
-        if(segA && segA.length) fillPaths.push(...pathFromSegments2D(segA, zOut, L, lh, regionRole || "infill"));
+        if(segA && segA.length){
+          const roleHere = regionRole || "infill";
+          const wHere = roleHere!=="infill" ? lw : infillLW;
+          const points = pathFromSegments2D(segA, zOut, L, lh, roleHere);
+          for(const pt of points){
+            pt.meta = pt.meta || {}; pt.meta.width = wHere; pt.meta.height = lh;
+          }
+          fillPaths.push(...points);
+        }
       }
     }
 

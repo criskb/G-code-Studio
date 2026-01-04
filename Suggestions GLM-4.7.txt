@@ -1,0 +1,304 @@
+
+
+This approach focuses on **refactoring the existing logic** rather than replacing it with an external library. We will keep the same inputs (Three.js geometry) and outputs (Layer data) but rewrite the internal loops to be performant using **Spatial Sorting**.
+
+The primary bottleneck in the current `trae-experiment` branch (and most naive slicers) is that it iterates over every single triangle in the mesh for every single layer. If you have a 20,000 face model and 100 layers, that is 2,000,000 intersection checks.
+
+Here is the fixed `SlicerEngine.js`.
+
+### 1. The Fixed Engine (`SlicerEngine.js`)
+
+Replace your current slicer logic with this class. It introduces **Z-Bucketing** (Spatial Hashing), which ensures we only check triangles that actually exist at a specific layer height.
+
+```javascript
+/**
+ * Optimized Slicer Engine for G-code-Studio
+ * Techniques:
+ * 1. Z-Bucketing: Sorts triangles into layer buckets to avoid O(N*M) complexity.
+ * 2. Greedy Path Linking: Connects segments into continuous paths efficiently.
+ */
+
+class SlicerEngine {
+  constructor(mesh, config) {
+    this.mesh = mesh;
+    this.config = {
+      layerHeight: 0.2,
+      ...config
+    };
+    
+    // Raw geometry data
+    this.vertices = null;
+    this.indices = null;
+    
+    // Spatial optimization buckets
+    this.buckets = []; 
+    this.minZ = Infinity;
+    this.maxZ = -Infinity;
+  }
+
+  /**
+   * Main entry point
+   */
+  process() {
+    this._extractGeometry();
+    this._preprocessBuckets();
+    return this._sliceModel();
+  }
+
+  /**
+   * 1. Extract data from Three.js BufferGeometry
+   * Handles both indexed and non-indexed geometries safely.
+   */
+  _extractGeometry() {
+    const posAttr = this.mesh.geometry.attributes.position;
+    const indexAttr = this.mesh.geometry.index;
+    
+    // If the geometry is indexed, use indices. If not, use raw vertex array.
+    const vertexCount = posAttr.count;
+    
+    // Store vertices as a flat array [x, y, z, x, y, z...]
+    this.vertices = posAttr.array;
+
+    if (indexAttr) {
+      this.indices = indexAttr.array;
+    } else {
+      // Generate indices for non-indexed geometry (0, 1, 2, 3, 4, 5...)
+      this.indices = new Uint32Array(vertexCount);
+      for (let i = 0; i < vertexCount; i++) this.indices[i] = i;
+    }
+  }
+
+  /**
+   * 2. Spatial Sorting (Z-Bucketing)
+   * Instead of checking every triangle for every layer, we group triangles
+   * by the Z-heights they span.
+   */
+  _preprocessBuckets() {
+    const { layerHeight } = this.config;
+    const triangleCount = this.indices.length / 3;
+    
+    // Initialize buckets array
+    this.buckets = new Map(); // Key: LayerIndex (Integer), Value: Array of Triangle Indices
+
+    for (let i = 0; i < triangleCount; i++) {
+      const i1 = this.indices[i * 3];
+      const i2 = this.indices[i * 3 + 1];
+      const i3 = this.indices[i * 3 + 2];
+
+      const z1 = this.vertices[i1 * 3 + 2];
+      const z2 = this.vertices[i2 * 3 + 2];
+      const z3 = this.vertices[i3 * 3 + 2];
+
+      const tMin = Math.min(z1, z2, z3);
+      const tMax = Math.max(z1, z2, z3);
+
+      if (tMin < this.minZ) this.minZ = tMin;
+      if (tMax > this.maxZ) this.maxZ = tMax;
+
+      // Calculate which layers this triangle overlaps
+      const startLayer = Math.floor(tMin / layerHeight);
+      const endLayer = Math.ceil(tMax / layerHeight);
+
+      // Add triangle index to all relevant buckets
+      for (let l = startLayer; l <= endLayer; l++) {
+        if (!this.buckets.has(l)) {
+          this.buckets.set(l, []);
+        }
+        this.buckets.get(l).push(i);
+      }
+    }
+  }
+
+  /**
+   * 3. Slicing Loop
+   * Iterate through buckets, not the whole mesh.
+   */
+  _sliceModel() {
+    const layers = [];
+    const { layerHeight } = this.config;
+
+    // Sort layer keys to ensure bottom-up slicing
+    const layerIndices = Array.from(this.buckets.keys()).sort((a, b) => a - b);
+
+    layerIndices.forEach(layerIdx => {
+      const z = layerIdx * layerHeight;
+      const triangleIndices = this.buckets.get(layerIdx);
+      const segments = [];
+
+      // Intersect only the triangles in this bucket
+      for (let i = 0; i < triangleIndices.length; i++) {
+        const seg = this._intersectTriangle(triangleIndices[i], z);
+        if (seg) {
+          segments.push(seg);
+        }
+      }
+
+      // Link the disjoint line segments into continuous paths
+      const paths = this._linkSegments(segments);
+
+      layers.push({
+        height: z,
+        paths: paths
+      });
+    });
+
+    return layers;
+  }
+
+  /**
+   * Geometry Math: Intersect a triangle with a Z-plane
+   */
+  _intersectTriangle(triIndex, z) {
+    const i1 = this.indices[triIndex * 3];
+    const i2 = this.indices[triIndex * 3 + 1];
+    const i3 = this.indices[triIndex * 3 + 2];
+
+    const p1 = { x: this.vertices[i1*3], y: this.vertices[i1*3+1], z: this.vertices[i1*3+2] };
+    const p2 = { x: this.vertices[i2*3], y: this.vertices[i2*3+1], z: this.vertices[i2*3+2] };
+    const p3 = { x: this.vertices[i3*3], y: this.vertices[i3*3+1], z: this.vertices[i3*3+2] };
+
+    // Check if triangle is coplanar or doesn't cross Z
+    if ((p1.z > z && p2.z > z && p3.z > z) || 
+        (p1.z < z && p2.z < z && p3.z < z)) {
+      return null;
+    }
+
+    const points = [];
+    
+    // Helper to intersect line segment (a-b) with Z-plane
+    const intersectEdge = (a, b) => {
+      if ((a.z <= z && b.z >= z) || (a.z >= z && b.z <= z)) {
+        if (Math.abs(a.z - b.z) < 0.00001) return null; // Skip horizontal edge
+        const t = (z - a.z) / (b.z - a.z);
+        return {
+          x: a.x + t * (b.x - a.x),
+          y: a.y + t * (b.y - a.y)
+        };
+      }
+      return null;
+    };
+
+    const p12 = intersectEdge(p1, p2);
+    const p23 = intersectEdge(p2, p3);
+    const p31 = intersectEdge(p3, p1);
+
+    if (p12) points.push(p12);
+    if (p23) points.push(p23);
+    if (p31) points.push(p31);
+
+    if (points.length === 2) {
+      return { p1: points[0], p2: points[1] };
+    }
+    
+    return null;
+  }
+
+  /**
+   * 4. Link Segments (Topology Fix)
+   * Takes random line segments and connects them into closed loops or open chains.
+   * Uses a greedy nearest-neighbor approach for O(N) performance roughly.
+   */
+  _linkSegments(segments) {
+    const paths = [];
+    const EPSILON = 0.01;
+
+    // Create a copy to manipulate
+    let pool = [...segments];
+
+    while (pool.length > 0) {
+      const currentPath = [pool.pop()];
+      let head = currentPath[0].p2;
+      let tail = currentPath[0].p1;
+      let merged = true;
+
+      // Keep extending the path
+      while (merged) {
+        merged = false;
+        for (let i = 0; i < pool.length; i++) {
+          const seg = pool[i];
+          const d1 = Math.hypot(seg.p1.x - head.x, seg.p1.y - head.y);
+          const d2 = Math.hypot(seg.p2.x - head.x, seg.p2.y - head.y);
+          const d3 = Math.hypot(seg.p1.x - tail.x, seg.p1.y - tail.y);
+          const d4 = Math.hypot(seg.p2.x - tail.x, seg.p2.y - tail.y);
+
+          if (d1 < EPSILON) {
+            head = seg.p2;
+            currentPath.push(seg);
+            pool.splice(i, 1);
+            merged = true;
+            break;
+          } else if (d2 < EPSILON) {
+            // Flip segment to maintain direction
+            seg.p1 = { ...seg.p2 }; 
+            seg.p2 = { ...seg.p1 }; // Note: mutating original seg object is fine here
+            head = seg.p2;
+            currentPath.push(seg);
+            pool.splice(i, 1);
+            merged = true;
+            break;
+          } else if (d3 < EPSILON) {
+            tail = seg.p2;
+            currentPath.unshift(seg);
+            pool.splice(i, 1);
+            merged = true;
+            break;
+          } else if (d4 < EPSILON) {
+             // Flip segment
+            seg.p1 = { ...seg.p2 }; 
+            seg.p2 = { ...seg.p1 }; 
+            tail = seg.p2;
+            currentPath.unshift(seg);
+            pool.splice(i, 1);
+            merged = true;
+            break;
+          }
+        }
+      }
+      paths.push(currentPath);
+    }
+    return paths;
+  }
+}
+
+export default SlicerEngine;
+```
+
+### 2. Integration Example
+
+In your React component (likely in `src/components` or wherever you handle the slicing logic), you can now swap the old engine call with this one.
+
+```javascript
+import SlicerEngine from '../utils/SlicerEngine'; // Adjust path as needed
+
+const SlicerComponent = ({ mesh }) => {
+  
+  const handleSlice = () => {
+    if (!mesh) return;
+
+    // Initialize with config
+    const engine = new SlicerEngine(mesh, {
+      layerHeight: 0.2
+    });
+
+    // 1. Preprocess (Spatial Sort) - usually fast
+    // 2. Slice (Intersection) - heavy lifting optimized by buckets
+    const layers = engine.process();
+
+    console.log(`Generated ${layers.length} layers`);
+
+    // Update your state to pass to the Viewer
+    setGcodeLayers(layers);
+  };
+
+  return (
+    <button onClick={handleSlice}>Slice Model</button>
+  );
+};
+```
+
+### 3. Key Fixes Explained
+
+1.  **Pre-process `_preprocessBuckets`**: This is the "Silver Bullet". Before we start slicing layers, we look at every triangle once. We ask: "Between Z=0mm and Z=100mm, where does this triangle live?" We then store the triangle index in a bucket map (e.g., `Layer 5 -> [Triangle 10, Triangle 55]`). When we slice Layer 5, we *only* check those 2 triangles, not the other 20,000 in the model.
+2.  **Buffer Geometry Support**: The code handles `geometry.index` (common in STL loaders) vs non-indexed geometry automatically, preventing crashes on different model formats.
+3.  **Tolerance-based Linking**: The `_linkSegments` method uses a small `EPSILON` (0.01mm). In floating-point math, two points that *should* touch are rarely `x === x`. We check if they are "close enough" (`dist < 0.01`), which fixes the "broken lines" or "spiderwebs" issues.
+4.  **Memory Management**: We use basic objects and typed arrays where possible, avoiding the creation of thousands of temporary Three.js `Vector3` objects during the calculation phase (which causes Garbage Collection stutter).

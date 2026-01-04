@@ -52,11 +52,17 @@ window.GCODE_STUDIO.NODE_DEFS['Preview'] = {
     const path = Array.isArray(pathRaw) ? pathRaw.filter(Boolean) : [];
     const base = (previewIn && typeof previewIn === "object") ? {...previewIn} : {};
     if(mesh) base.mesh = mesh;
-    if(toolpath) base.toolpath = toolpath;
+    if(toolpath){
+      base.toolpath = toolpath;
+      if(!base.type) base.type = "toolpath";
+    }
     if(pathIn){
       base.path = path;
       if(!base.type) base.type = "path";
     }
+    if(previewIn && previewIn.overlays){ base.overlays = previewIn.overlays; }
+    if(previewIn && previewIn.markers){ base.markers = previewIn.markers; }
+    if(previewIn && previewIn.legend){ base.legend = previewIn.legend; }
     const hasPayload = Object.keys(base).length > 0;
     return { preview: hasPayload ? base : null };
   },

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>G-code Studio — Node Graph v72</title>
 <link rel="stylesheet" href="/styles.css" />
+<link rel="stylesheet" href="/sleek.css" />
 </head>
 <body data-theme="dark">
   <div class="topbar">
@@ -25,14 +26,17 @@
 </div>
 
       <button class="btn" id="btnSettings" title="Settings">Settings</button>
+      <button class="btn" id="btnToggleLib" title="Toggle Library">Library</button>
       <button class="btn" id="btnTheme">Toggle theme</button>
       <button class="btn" id="btnFit">Fit view</button>
       <button class="btn" id="btnCenter">Center graph</button>
       <button class="btn" id="btnAddNode" title="Add node (Space)">Add node</button>
       <button class="btn" id="btnParams" title="Edit global parameters">Params</button>
       <button class="btn" id="btnAuto">Auto: ON</button>
-      <button class="btn primary" id="btnRun">Run graph</button>
-      <button class="btn primary" id="btnDownload">Download .gcode</button>
+      <div class="seg">
+        <button class="btn primary" id="btnRun">Run graph</button>
+        <button class="btn primary" id="btnDownload">Download .gcode</button>
+      </div>
       <button class="btn" id="btnSave">Export JSON</button>
       <button class="btn" id="btnLoad">Import JSON</button>
       <input id="fileLoad" type="file" accept="application/json" style="display:none"/>
@@ -95,7 +99,13 @@
 
     <!-- Right: Preview + Output (docked into nodes) -->
     <div class="panel right">
-      <div class="body">
+      <div class="body view-preview">
+        <div class="tabsBar">
+          <div class="tabs">
+            <button class="tab active" id="tabPrev">Preview</button>
+            <button class="tab" id="tabGcode">G-code</button>
+          </div>
+        </div>
         <div class="previewPanel" id="previewPanel">
           <div class="previewHost">
             <canvas id="glPreview"></canvas>

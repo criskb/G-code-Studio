@@ -1,0 +1,33 @@
+:root{
+  --radius: 18px;
+  --radius2: 14px;
+  --accent: #00e1a5;
+  --accent2:#2aa8ff;
+  --graph-dot-size: 24px;
+  --graph-dot-opacity: 0.12;
+  --shadow: 0 24px 70px rgba(0,0,0,0.55);
+}
+[data-theme="light"]{
+  --accent:#00b48a;
+  --accent2:#2f7ef7;
+}
+.topbar{ height: 64px; }
+.brand{ border-radius: 14px; }
+.actions{ border-radius: 14px; }
+.btn{ border-radius: 14px; font-size:13px; padding:9px 12px; }
+.node{ border-radius: 18px; }
+.nodeHead{ padding:12px 12px 10px 12px; }
+.nodeBtn{ border-radius: 12px; }
+.pill{ border-radius: 12px; }
+.graphBg.pattern-dots{ opacity: var(--graph-dot-opacity); }
+
+.seg{ display:inline-flex; gap:8px; padding:6px; border:1px solid var(--stroke); border-radius: 14px; background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); }
+.seg .btn{ border-color: rgba(66,255,179,0.28); }
+
+.tabsBar{ display:flex; align-items:center; justify-content:flex-start; border-bottom:1px solid var(--stroke); padding:8px 10px; background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent); }
+.tabs{ display:inline-flex; gap:8px; }
+.tab{ appearance:none; border:1px solid var(--stroke2); background:rgba(0,0,0,0.08); color:var(--text); padding:7px 12px; border-radius:12px; font-weight:800; font-size:12px; cursor:pointer; }
+.tab.active{ border-color: rgba(66,255,179,0.35); background: linear-gradient(180deg, rgba(66,255,179,0.16), rgba(66,255,179,0.08)); }
+
+.panel.right .body.view-preview #gcodePanel{ display:none; }
+.panel.right .body.view-gcode #previewPanel{ display:none; }
