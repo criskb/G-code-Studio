@@ -2769,7 +2769,7 @@ if(previewMeshSettings.viewer === "mv"){
   const previewMesh = previewPayload?.mesh || state.outputs.mesh || null;
   const previewToolpath = previewPayload?.toolpath || state.outputs.toolpath || null;
   const previewPath = previewPayload?.path;
-  const overlays = previewPayload?.overlays || (previewToolpath ? ["featureType"] : []);
+  const overlays = previewPayload?.overlays || state.outputs.path?.overlays || (previewToolpath ? ["featureType"] : []);
 
   updatePreviewOverlayOptions(overlays);
   updatePreviewLegend(previewPayload?.legend || null);
