@@ -2454,7 +2454,9 @@ function setPreviewPath(machinePath){
     const cb = getPreviewColor(b);
     const bottomZA = az - height;
     const bottomZB = bz - height;
-    const samples = Math.max(12, Math.min(240, Math.floor(Math.max(half * 16, len * 0.8))));
+    const base = Math.max(half * 12, len * 0.5);
+    const zoomAdj = Math.max(0.5, Math.min(2.0, 220 / Math.max(1, preview.cam.radius)));
+    const samples = Math.max(8, Math.min(200, Math.floor(base * zoomAdj)));
     let u0 = -1;
     let x0 = u0 * half;
     const denomW = half*half || 1e-9;
@@ -2560,7 +2562,7 @@ function setPreviewPath(machinePath){
 }
 
 
-function setPreviewMesh(meshModel, profile){
+function setPreviewMesh(meshModel, profile, offsetX=0, offsetY=0){
   const gl = preview.gl;
   if(!gl){ return; }
 
@@ -2583,7 +2585,8 @@ function setPreviewMesh(meshModel, profile){
   }
 
   const triCount = Math.floor(tris.length/9);
-  const maxTris = 50000;
+  const px = Math.max(1, (glCanvas?.width||800) * (glCanvas?.height||600));
+  const maxTris = Math.max(20000, Math.min(80000, Math.floor(px / 20)));
   const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;
 
   // Wireframe lines
@@ -2603,13 +2606,13 @@ function setPreviewMesh(meshModel, profile){
     const C = toMachineXY(cx, cy, profile);
 
     // wire lines
-    lines.push(A.X, A.Y, az,  B.X, B.Y, bz);
-    lines.push(B.X, B.Y, bz,  C.X, C.Y, cz);
-    lines.push(C.X, C.Y, cz,  A.X, A.Y, az);
+    lines.push(A.X+offsetX, A.Y+offsetY, az,  B.X+offsetX, B.Y+offsetY, bz);
+    lines.push(B.X+offsetX, B.Y+offsetY, bz,  C.X+offsetX, C.Y+offsetY, cz);
+    lines.push(C.X+offsetX, C.Y+offsetY, cz,  A.X+offsetX, A.Y+offsetY, az);
 
     // normal (flat)
-    const ux = (B.X - A.X), uy = (B.Y - A.Y), uz = (bz - az);
-    const vx = (C.X - A.X), vy = (C.Y - A.Y), vz = (cz - az);
+    const ux = ((B.X+offsetX) - (A.X+offsetX)), uy = ((B.Y+offsetY) - (A.Y+offsetY)), uz = (bz - az);
+    const vx = ((C.X+offsetX) - (A.X+offsetX)), vy = ((C.Y+offsetY) - (A.Y+offsetY)), vz = (cz - az);
     let nx = uy*vz - uz*vy;
     let ny = uz*vx - ux*vz;
     let nz = ux*vy - uy*vx;
@@ -2617,7 +2620,7 @@ function setPreviewMesh(meshModel, profile){
     const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
     nx/=nl; ny/=nl; nz/=nl;
 
-    posTri.push(A.X, A.Y, az,  B.X, B.Y, bz,  C.X, C.Y, cz);
+    posTri.push(A.X+offsetX, A.Y+offsetY, az,  B.X+offsetX, B.Y+offsetY, bz,  C.X+offsetX, C.Y+offsetY, cz);
     norTri.push(nx,ny,nz,  nx,ny,nz,  nx,ny,nz);
   }
 
@@ -2749,17 +2752,17 @@ function drawPreviewLoop(){
   // Draw grid
   gl.enableVertexAttribArray(preview.aPos);
   const text = getComputedStyle(document.body).getPropertyValue("--text").trim();
-  setColor(text, 0.18);
+  setColor("#ffffff", 0.14);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.gridBuf);
   gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.10));
+  setConstACol(gl, hexToRGBAf("#ffffff", 0.12));
   gl.drawArrays(gl.LINES, 0, preview.counts.grid);
 
   // Draw bed border
-  setColor(text, 0.28);
+  setColor(text, 0.22);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.bedBuf);
   gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.16));
+  setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.18));
   gl.drawArrays(gl.LINES, 0, preview.counts.bed);
 
 
@@ -2877,8 +2880,15 @@ if(previewMeshSettings.viewer === "mv"){
   return;
 }
 
-  const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
-  const prof = printerNode?.data || {bedW:220, bedD:220};
+  let prof = null;
+  for(const n of Object.values(state.nodes)){
+    const out = evalCache.get(n.id);
+    if(out?.profile) prof = out.profile;
+  }
+  if(!prof){
+    const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+    prof = printerNode?.data || {bedW:220, bedD:220, origin:"center"};
+  }
   if(prof.bedW !== preview.bed.w || prof.bedD !== preview.bed.d){
     buildBedBuffers(prof.bedW, prof.bedD);
   }
@@ -2890,7 +2900,7 @@ if(previewMeshSettings.viewer === "mv"){
 
   updatePreviewOverlayOptions(overlays);
   updatePreviewLegend(previewPayload?.legend || null);
-  setPreviewMesh(previewMesh, prof);
+  
 
   let pathForPreview = Array.isArray(previewPath) ? previewPath : (state.outputs.path||[]);
   let warning = "";
@@ -2901,7 +2911,49 @@ if(previewMeshSettings.viewer === "mv"){
   }
   updatePreviewWarning(previewPayload?.warning || warning);
   updatePreviewControlsFromPath(pathForPreview);
-  setPreviewPath(filterPreviewPath(pathForPreview));
+  const filtered = filterPreviewPath(pathForPreview);
+  const bedCx = (prof.bedW||220)/2;
+  const bedCy = (prof.bedD||220)/2;
+  const pathMachine = filtered.map(p=>{
+    if(!p) return null;
+    if(p.X!=null && p.Y!=null) return p;
+    const m = toMachineXY(p.x||0, p.y||0, prof);
+    return {...p, X:m.X, Y:m.Y};
+  });
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const p of pathMachine){
+    if(!p) continue;
+    const X = p.X ?? p.x ?? 0;
+    const Y = p.Y ?? p.y ?? 0;
+    minX=Math.min(minX,X); maxX=Math.max(maxX,X);
+    minY=Math.min(minY,Y); maxY=Math.max(maxY,Y);
+  }
+  const mesh = previewMesh || null;
+  const meshTris = meshToTris(mesh);
+  if(mesh && meshTris && meshTris.length>=9){
+    const b = mesh.bounds || computeMeshBounds(meshTris);
+    const corners = [
+      [b.min.x, b.min.y],
+      [b.max.x, b.min.y],
+      [b.min.x, b.max.y],
+      [b.max.x, b.max.y],
+    ];
+    for(const c of corners){
+      const M = toMachineXY(c[0], c[1], prof);
+      minX = Math.min(minX, M.X); maxX = Math.max(maxX, M.X);
+      minY = Math.min(minY, M.Y); maxY = Math.max(maxY, M.Y);
+    }
+  }
+  const cx = (isFinite(minX)&&isFinite(maxX)) ? (minX+maxX)/2 : bedCx;
+  const cy = (isFinite(minY)&&isFinite(maxY)) ? (minY+maxY)/2 : bedCy;
+  const offX = bedCx - cx;
+  const offY = bedCy - cy;
+  const pathShifted = pathMachine.map(p=>{
+    if(!p) return null;
+    return {...p, X:(p.X ?? p.x ?? 0)+offX, Y:(p.Y ?? p.y ?? 0)+offY};
+  });
+  setPreviewMesh(previewMesh, prof, offX, offY);
+  setPreviewPath(pathShifted);
 }
 
 let previewDirty = true;
