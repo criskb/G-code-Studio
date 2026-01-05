@@ -3999,6 +3999,19 @@ const lastLayer = layers - 1;
 
     
 
+    const isPointInPoly = (pt, poly)=>{
+      let inside = false;
+      for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+        const xi = poly[i][0], yi = poly[i][1];
+        const xj = poly[j][0], yj = poly[j][1];
+        const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+          && (pt[0] < (xj - xi) * (pt[1] - yi) / ((yj - yi) || 1e-9) + xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    };
+    const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
+
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
     const roleSolid = isBottom ? "bottom" : (isTop ? "top" : null);
@@ -4042,19 +4055,6 @@ const lastLayer = layers - 1;
     const wallsPaths = [];
     let lastWallPoint = wallsPaths.length ? wallsPaths[wallsPaths.length-1] : null;
     if(per>0){
-      const emitCenterline = (outerLoop, innerLoop, role)=>{
-        if(!outerLoop || !innerLoop) return;
-        const n = Math.min(outerLoop.length, innerLoop.length);
-        if(n < 2) return;
-        for(let i=0;i<n;i++){
-          const a = outerLoop[i];
-          const b = innerLoop[i];
-          if(!a || !b) continue;
-          const x = (a[0] + b[0]) * 0.5;
-          const y = (a[1] + b[1]) * 0.5;
-          wallsPaths.push({x, y, z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role}});
-        }
-      };
       const emitWallLoop = (poly, loopRole, offsetDir)=>{
         let base = normalizeLoopClosed(poly);
         const seamIdx = seamStartIndex(base, String(opts.seamMode||"nearest"), lastWallPoint);
@@ -4103,11 +4103,9 @@ const lastLayer = layers - 1;
 
     // Infill / solid
     const fillPaths = [];
-    for(const region of regions){
-      const regionRole = roleSolid || region.supportRole || null;
-      const pct = regionRole ? 100 : infPct;
-      if(pct<=0) continue;
-      const spacing = regionRole ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
+    const pct = roleSolid ? 100 : infPct;
+    if(pct>0){
+      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
       const a1 = ang0 + (L%2)*Math.PI/2;
       let segA = [];
       const pat = regionRole ? solidPat : infPat;
