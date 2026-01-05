@@ -2038,14 +2038,14 @@ function initPreviewGL(){
 
   const vs = `
     attribute vec3 aPos;
-attribute vec4 aCol;
-uniform mat4 uVP;
-varying vec4 vCol;
-void main(){
-  vCol = aCol;
-  gl_Position = uVP * vec4(aPos, 1.0);
-  gl_PointSize = 7.0;
-}
+    attribute vec4 aCol;
+    uniform mat4 uVP;
+    varying vec4 vCol;
+    void main(){
+      vCol = aCol;
+      gl_Position = uVP * vec4(aPos, 1.0);
+      gl_PointSize = 10.0;
+    }
   `;
   const fs = `
     precision mediump float;
@@ -2109,6 +2109,49 @@ preview.uEye = gl.getUniformLocation(prog2, "uEye");
 preview.uBase = gl.getUniformLocation(prog2, "uBase");
 preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
 
+ const vsR = `
+   attribute vec3 aPos;
+   attribute vec3 aNor;
+   attribute vec4 aCol;
+   uniform mat4 uVP;
+   varying vec3 vN;
+   varying vec3 vPos;
+   varying vec4 vCol;
+   void main(){
+     vN = aNor;
+     vPos = aPos;
+     vCol = aCol;
+     gl_Position = uVP * vec4(aPos, 1.0);
+   }
+ `;
+ const fsR = `
+   precision mediump float;
+   varying vec3 vN;
+   varying vec3 vPos;
+   varying vec4 vCol;
+   uniform vec3 uLight;
+   uniform vec3 uEye;
+   void main(){
+     vec3 N = normalize(vN);
+     vec3 L = normalize(uLight);
+     vec3 V = normalize(uEye - vPos);
+     vec3 H = normalize(L + V);
+     float diff = max(0.0, dot(N, L));
+     float spec = pow(max(dot(N, H), 0.0), 42.0);
+     float ambient = 0.22;
+     vec3 c = vCol.rgb * (ambient + diff) + vec3(0.35) * spec;
+     gl_FragColor = vec4(c, vCol.a);
+   }
+ `;
+ const progR = glCreateProgram(gl, vsR, fsR);
+ preview.progRibbon = progR;
+ preview.aPosR = gl.getAttribLocation(progR, "aPos");
+ preview.aNorR = gl.getAttribLocation(progR, "aNor");
+ preview.aColR = gl.getAttribLocation(progR, "aCol");
+ preview.uVPR = gl.getUniformLocation(progR, "uVP");
+ preview.uLightR = gl.getUniformLocation(progR, "uLight");
+ preview.uEyeR = gl.getUniformLocation(progR, "uEye");
+
   preview.buf = gl.createBuffer();
   preview.colBuf = gl.createBuffer();
   preview.gridBuf = gl.createBuffer();
@@ -2119,6 +2162,9 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
   preview.meshTriNorBuf = gl.createBuffer();
   preview.pathTriBuf = gl.createBuffer();
   preview.pathTriColBuf = gl.createBuffer();
+  preview.pathRibbonPosBuf = gl.createBuffer();
+  preview.pathRibbonNorBuf = gl.createBuffer();
+  preview.pathRibbonColBuf = gl.createBuffer();
 
   gl.enableVertexAttribArray(preview.aPos);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
@@ -2126,6 +2172,8 @@ preview.uAlpha = gl.getUniformLocation(prog2, "uAlpha");
 
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.clearColor(0,0,0,0);
 
   bindPreviewCanvasControls();
@@ -2175,6 +2223,11 @@ function updateVP(){
     gl.useProgram(preview.progSolid);
     gl.uniformMatrix4fv(preview.uVP2, false, vp);
     if(preview.uEye) gl.uniform3f(preview.uEye, eye.x, eye.y, eye.z);
+  }
+  if(preview.progRibbon && preview.uVPR){
+    gl.useProgram(preview.progRibbon);
+    gl.uniformMatrix4fv(preview.uVPR, false, vp);
+    if(preview.uEyeR) gl.uniform3f(preview.uEyeR, eye.x, eye.y, eye.z);
   }
   // restore line program by default
   gl.useProgram(preview.prog);
@@ -2368,6 +2421,9 @@ function setPreviewPath(machinePath){
   const col = [];
   const triPos = [];
   const triCol = [];
+  const ribPos = [];
+  const ribNor = [];
+  const ribCol = [];
   let last = null;
   const useHd = typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd";
 
@@ -2380,7 +2436,7 @@ function setPreviewPath(machinePath){
     col.push(rgba[0], rgba[1], rgba[2], rgba[3]);
   };
 
-  const pushRibbon = (a, b, width)=>{
+  const pushRibbon = (a, b, width, height)=>{
     const ax = a.X ?? a.x ?? 0;
     const ay = a.Y ?? a.y ?? 0;
     const az = a.z ?? 0;
@@ -2391,28 +2447,72 @@ function setPreviewPath(machinePath){
     const dy = by - ay;
     const len = Math.hypot(dx, dy);
     if(len <= 1e-6) return;
-    const half = width * 0.5;
-    const px = -dy / len * half;
-    const py = dx / len * half;
-    const aLx = ax + px;
-    const aLy = ay + py;
-    const aRx = ax - px;
-    const aRy = ay - py;
-    const bLx = bx + px;
-    const bLy = by + py;
-    const bRx = bx - px;
-    const bRy = by - py;
-    const rgba = getPreviewColor(b);
-    const pushTri = (x,y,z)=>{
-      triPos.push(x,y,z);
-      triCol.push(rgba[0], rgba[1], rgba[2], rgba[3]);
-    };
-    pushTri(aLx, aLy, az);
-    pushTri(aRx, aRy, az);
-    pushTri(bLx, bLy, bz);
-    pushTri(bLx, bLy, bz);
-    pushTri(aRx, aRy, az);
-    pushTri(bRx, bRy, bz);
+    const half = Math.max(0.001, width * 0.5);
+    const rx = -dy / len;
+    const ry =  dx / len;
+    const ca = getPreviewColor(a);
+    const cb = getPreviewColor(b);
+    const bottomZA = az - height;
+    const bottomZB = bz - height;
+    const base = Math.max(half * 12, len * 0.5);
+    const zoomAdj = Math.max(0.5, Math.min(2.0, 220 / Math.max(1, preview.cam.radius)));
+    const samples = Math.max(8, Math.min(200, Math.floor(base * zoomAdj)));
+    let u0 = -1;
+    let x0 = u0 * half;
+    const denomW = half*half || 1e-9;
+    const denomH = height*height || 1e-9;
+    let zRelA0 = height * Math.sqrt(Math.max(0, 1 - (x0*x0)/denomW));
+    let zRelB0 = height * Math.sqrt(Math.max(0, 1 - (x0*x0)/denomW));
+    let A0x = ax + rx * x0;
+    let A0y = ay + ry * x0;
+    let A0z = bottomZA + zRelA0 + 0.001;
+    let B0x = bx + rx * x0;
+    let B0y = by + ry * x0;
+    let B0z = bottomZB + zRelB0 + 0.001;
+    let nxA0 = (x0) / denomW;
+    let nzA0 = (zRelA0) / denomH;
+    let nxB0 = (x0) / denomW;
+    let nzB0 = (zRelB0) / denomH;
+    let nA0x = rx*nxA0, nA0y = ry*nxA0, nA0z = nzA0;
+    let nB0x = rx*nxB0, nB0y = ry*nxB0, nB0z = nzB0;
+    if(nA0z < 0){ nA0x=-nA0x; nA0y=-nA0y; nA0z=-nA0z; }
+    if(nB0z < 0){ nB0x=-nB0x; nB0y=-nB0y; nB0z=-nB0z; }
+    let nlA0 = Math.hypot(nA0x,nA0y,nA0z) || 1;
+    let nlB0 = Math.hypot(nB0x,nB0y,nB0z) || 1;
+    nA0x/=nlA0; nA0y/=nlA0; nA0z/=nlA0;
+    nB0x/=nlB0; nB0y/=nlB0; nB0z/=nlB0;
+    for(let i=1;i<=samples;i++){
+      const u = (i / samples) * 2 - 1;
+      const x1 = u * half;
+      const zRelA1 = height * Math.sqrt(Math.max(0, 1 - (x1*x1)/denomW));
+      const zRelB1 = height * Math.sqrt(Math.max(0, 1 - (x1*x1)/denomW));
+      const A1x = ax + rx * x1;
+      const A1y = ay + ry * x1;
+      const A1z = bottomZA + zRelA1 + 0.001;
+      const B1x = bx + rx * x1;
+      const B1y = by + ry * x1;
+      const B1z = bottomZB + zRelB1 + 0.001;
+      const nxA1 = (x1) / denomW;
+      const nzA1 = (zRelA1) / denomH;
+      const nxB1 = (x1) / denomW;
+      const nzB1 = (zRelB1) / denomH;
+      let nA1x = rx*nxA1, nA1y = ry*nxA1, nA1z = nzA1;
+      let nB1x = rx*nxB1, nB1y = ry*nxB1, nB1z = nzB1;
+      if(nA1z < 0){ nA1x=-nA1x; nA1y=-nA1y; nA1z=-nA1z; }
+      if(nB1z < 0){ nB1x=-nB1x; nB1y=-nB1y; nB1z=-nB1z; }
+      const nlA1 = Math.hypot(nA1x,nA1y,nA1z) || 1;
+      const nlB1 = Math.hypot(nB1x,nB1y,nB1z) || 1;
+      nA1x/=nlA1; nA1y/=nlA1; nA1z/=nlA1;
+      nB1x/=nlB1; nB1y/=nlB1; nB1z/=nlB1;
+      ribPos.push(A0x,A0y,A0z,  B0x,B0y,B0z,  A1x,A1y,A1z);
+      ribNor.push(nA0x,nA0y,nA0z,  nB0x,nB0y,nB0z,  nA1x,nA1y,nA1z);
+      ribCol.push(ca[0],ca[1],ca[2],ca[3],  cb[0],cb[1],cb[2],cb[3],  ca[0],ca[1],ca[2],ca[3]);
+      ribPos.push(A1x,A1y,A1z,  B0x,B0y,B0z,  B1x,B1y,B1z);
+      ribNor.push(nA1x,nA1y,nA1z,  nB0x,nB0y,nB0z,  nB1x,nB1y,nB1z);
+      ribCol.push(ca[0],ca[1],ca[2],ca[3],  cb[0],cb[1],cb[2],cb[3],  cb[0],cb[1],cb[2],cb[3]);
+      A0x=A1x; A0y=A1y; A0z=A1z; B0x=B1x; B0y=B1y; B0z=B1z;
+      nA0x=nA1x; nA0y=nA1y; nA0z=nA1z; nB0x=nB1x; nB0y=nB1y; nB0z=nB1z;
+    }
   };
 
   for(const p of machinePath){
@@ -2424,8 +2524,12 @@ function setPreviewPath(machinePath){
       pushVertex(last);
       pushVertex(p);
       if(useHd){
-        const width = Math.max(0.15, Number(p.meta?.lineWidth || previewLineSettings?.width || 0.6));
-        pushRibbon(last, p, width);
+        const travelSeg = !!(p.travel || (p.meta && (p.meta.feature === "travel" || p.meta.role === "travel")));
+        if(!travelSeg){
+          const width = Math.max(0.15, Number(p.meta?.lineWidth || p.meta?.width || previewLineSettings?.width || 0.6));
+          const height = Math.max(0.05, Number(p.meta?.layerHeight || p.meta?.height || 0.2));
+          pushRibbon(last, p, width, height);
+        }
       }
     }
     last = p;
@@ -2437,6 +2541,10 @@ function setPreviewPath(machinePath){
   uploadBuffer(preview.pathTriBuf, new Float32Array(triPos));
   uploadBuffer(preview.pathTriColBuf, new Float32Array(triCol));
   preview.counts.pathTris = triPos.length / 3;
+  uploadBuffer(preview.pathRibbonPosBuf, new Float32Array(ribPos));
+  uploadBuffer(preview.pathRibbonNorBuf, new Float32Array(ribNor));
+  uploadBuffer(preview.pathRibbonColBuf, new Float32Array(ribCol));
+  preview.counts.pathRibbonTris = ribPos.length / 3;
 
   // tool dot at last point
   const tool = new Float32Array(3);
@@ -2454,7 +2562,7 @@ function setPreviewPath(machinePath){
 }
 
 
-function setPreviewMesh(meshModel, profile){
+function setPreviewMesh(meshModel, profile, offsetX=0, offsetY=0){
   const gl = preview.gl;
   if(!gl){ return; }
 
@@ -2477,7 +2585,8 @@ function setPreviewMesh(meshModel, profile){
   }
 
   const triCount = Math.floor(tris.length/9);
-  const maxTris = 50000;
+  const px = Math.max(1, (glCanvas?.width||800) * (glCanvas?.height||600));
+  const maxTris = Math.max(20000, Math.min(80000, Math.floor(px / 20)));
   const step = triCount > maxTris ? Math.ceil(triCount/maxTris) : 1;
 
   // Wireframe lines
@@ -2497,20 +2606,21 @@ function setPreviewMesh(meshModel, profile){
     const C = toMachineXY(cx, cy, profile);
 
     // wire lines
-    lines.push(A.X, A.Y, az,  B.X, B.Y, bz);
-    lines.push(B.X, B.Y, bz,  C.X, C.Y, cz);
-    lines.push(C.X, C.Y, cz,  A.X, A.Y, az);
+    lines.push(A.X+offsetX, A.Y+offsetY, az,  B.X+offsetX, B.Y+offsetY, bz);
+    lines.push(B.X+offsetX, B.Y+offsetY, bz,  C.X+offsetX, C.Y+offsetY, cz);
+    lines.push(C.X+offsetX, C.Y+offsetY, cz,  A.X+offsetX, A.Y+offsetY, az);
 
     // normal (flat)
-    const ux = (B.X - A.X), uy = (B.Y - A.Y), uz = (bz - az);
-    const vx = (C.X - A.X), vy = (C.Y - A.Y), vz = (cz - az);
+    const ux = ((B.X+offsetX) - (A.X+offsetX)), uy = ((B.Y+offsetY) - (A.Y+offsetY)), uz = (bz - az);
+    const vx = ((C.X+offsetX) - (A.X+offsetX)), vy = ((C.Y+offsetY) - (A.Y+offsetY)), vz = (cz - az);
     let nx = uy*vz - uz*vy;
     let ny = uz*vx - ux*vz;
     let nz = ux*vy - uy*vx;
+    if(nz < 0){ nx=-nx; ny=-ny; nz=-nz; }
     const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
     nx/=nl; ny/=nl; nz/=nl;
 
-    posTri.push(A.X, A.Y, az,  B.X, B.Y, bz,  C.X, C.Y, cz);
+    posTri.push(A.X+offsetX, A.Y+offsetY, az,  B.X+offsetX, B.Y+offsetY, bz,  C.X+offsetX, C.Y+offsetY, cz);
     norTri.push(nx,ny,nz,  nx,ny,nz,  nx,ny,nz);
   }
 
@@ -2642,17 +2752,17 @@ function drawPreviewLoop(){
   // Draw grid
   gl.enableVertexAttribArray(preview.aPos);
   const text = getComputedStyle(document.body).getPropertyValue("--text").trim();
-  setColor(text, 0.18);
+  setColor("#ffffff", 0.14);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.gridBuf);
   gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.18));
+  setConstACol(gl, hexToRGBAf("#ffffff", 0.12));
   gl.drawArrays(gl.LINES, 0, preview.counts.grid);
 
   // Draw bed border
-  setColor(text, 0.28);
+  setColor(text, 0.22);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.bedBuf);
   gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf(getComputedStyle(document.body).getPropertyValue("--text").trim()||"#ffffff", 0.28));
+  setConstACol(gl, hexToRGBAf(text||"#ffffff", 0.18));
   gl.drawArrays(gl.LINES, 0, preview.counts.bed);
 
 
@@ -2691,14 +2801,24 @@ if(previewMeshSettings.render !== "off"){
 
   const accent = getComputedStyle(document.body).getPropertyValue("--accent").trim();
   const accent2 = getComputedStyle(document.body).getPropertyValue("--accent2").trim();
-  if(typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd" && preview.counts.pathTris>2){
-    setColor(accent, 0.95);
-    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriBuf);
+  if(typeof previewLineSettings !== "undefined" && previewLineSettings?.mode === "hd" && preview.counts.pathRibbonTris>2 && preview.progRibbon){
+    gl.useProgram(preview.progRibbon);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathRibbonPosBuf);
+    if(preview.aPosR>=0){ gl.enableVertexAttribArray(preview.aPosR); gl.vertexAttribPointer(preview.aPosR, 3, gl.FLOAT, false, 0, 0); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathRibbonNorBuf);
+    if(preview.aNorR>=0){ gl.enableVertexAttribArray(preview.aNorR); gl.vertexAttribPointer(preview.aNorR, 3, gl.FLOAT, false, 0, 0); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathRibbonColBuf);
+    if(preview.aColR>=0){ gl.enableVertexAttribArray(preview.aColR); gl.vertexAttribPointer(preview.aColR, 4, gl.FLOAT, false, 0, 0); }
+    gl.uniform3f(preview.uLightR, 0.25, 0.55, 1.0);
+    gl.drawArrays(gl.TRIANGLES, 0, preview.counts.pathRibbonTris);
+    gl.useProgram(preview.prog);
+    setColor(accent2, 0.55);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
     gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(preview.aCol);
-    gl.bindBuffer(gl.ARRAY_BUFFER, preview.pathTriColBuf);
+    gl.bindBuffer(gl.ARRAY_BUFFER, preview.colBuf);
     gl.vertexAttribPointer(preview.aCol, 4, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, preview.counts.pathTris);
+    if(preview.counts.path>1) gl.drawArrays(gl.LINES, 0, preview.counts.path);
   }else{
     setColor(accent2, 0.35);
     gl.bindBuffer(gl.ARRAY_BUFFER, preview.buf);
@@ -2760,8 +2880,15 @@ if(previewMeshSettings.viewer === "mv"){
   return;
 }
 
-  const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
-  const prof = printerNode?.data || {bedW:220, bedD:220};
+  let prof = null;
+  for(const n of Object.values(state.nodes)){
+    const out = evalCache.get(n.id);
+    if(out?.profile) prof = out.profile;
+  }
+  if(!prof){
+    const printerNode = Object.values(state.nodes).find(n=>n.type==="Printer");
+    prof = printerNode?.data || {bedW:220, bedD:220, origin:"center"};
+  }
   if(prof.bedW !== preview.bed.w || prof.bedD !== preview.bed.d){
     buildBedBuffers(prof.bedW, prof.bedD);
   }
@@ -2773,7 +2900,7 @@ if(previewMeshSettings.viewer === "mv"){
 
   updatePreviewOverlayOptions(overlays);
   updatePreviewLegend(previewPayload?.legend || null);
-  setPreviewMesh(previewMesh, prof);
+  
 
   let pathForPreview = Array.isArray(previewPath) ? previewPath : (state.outputs.path||[]);
   let warning = "";
@@ -2784,7 +2911,49 @@ if(previewMeshSettings.viewer === "mv"){
   }
   updatePreviewWarning(previewPayload?.warning || warning);
   updatePreviewControlsFromPath(pathForPreview);
-  setPreviewPath(filterPreviewPath(pathForPreview));
+  const filtered = filterPreviewPath(pathForPreview);
+  const bedCx = (prof.bedW||220)/2;
+  const bedCy = (prof.bedD||220)/2;
+  const pathMachine = filtered.map(p=>{
+    if(!p) return null;
+    if(p.X!=null && p.Y!=null) return p;
+    const m = toMachineXY(p.x||0, p.y||0, prof);
+    return {...p, X:m.X, Y:m.Y};
+  });
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const p of pathMachine){
+    if(!p) continue;
+    const X = p.X ?? p.x ?? 0;
+    const Y = p.Y ?? p.y ?? 0;
+    minX=Math.min(minX,X); maxX=Math.max(maxX,X);
+    minY=Math.min(minY,Y); maxY=Math.max(maxY,Y);
+  }
+  const mesh = previewMesh || null;
+  const meshTris = meshToTris(mesh);
+  if(mesh && meshTris && meshTris.length>=9){
+    const b = mesh.bounds || computeMeshBounds(meshTris);
+    const corners = [
+      [b.min.x, b.min.y],
+      [b.max.x, b.min.y],
+      [b.min.x, b.max.y],
+      [b.max.x, b.max.y],
+    ];
+    for(const c of corners){
+      const M = toMachineXY(c[0], c[1], prof);
+      minX = Math.min(minX, M.X); maxX = Math.max(maxX, M.X);
+      minY = Math.min(minY, M.Y); maxY = Math.max(maxY, M.Y);
+    }
+  }
+  const cx = (isFinite(minX)&&isFinite(maxX)) ? (minX+maxX)/2 : bedCx;
+  const cy = (isFinite(minY)&&isFinite(maxY)) ? (minY+maxY)/2 : bedCy;
+  const offX = bedCx - cx;
+  const offY = bedCy - cy;
+  const pathShifted = pathMachine.map(p=>{
+    if(!p) return null;
+    return {...p, X:(p.X ?? p.x ?? 0)+offX, Y:(p.Y ?? p.y ?? 0)+offY};
+  });
+  setPreviewMesh(previewMesh, prof, offX, offY);
+  setPreviewPath(pathShifted);
 }
 
 let previewDirty = true;
@@ -2913,6 +3082,11 @@ document.getElementById("btnTheme").addEventListener("click", ()=>{
   renderGraph();
   updateOutputUI();
   schedulePreviewUpdate();
+});
+document.getElementById("btnToggleLib").addEventListener("click", ()=>{
+  appSettings.showLib = !appSettings.showLib;
+  applyAppSettings();
+  saveAppSettings();
 });
 document.getElementById("btnFit").addEventListener("click", ()=>{
   const nodes = Object.values(state.nodes);
@@ -3420,6 +3594,20 @@ async function boot(){
       nodeListEl.appendChild(msg);
     }
   }catch(e){}
+  try{
+    const rightBody = document.querySelector('.panel.right .body');
+    const tabPrev = document.getElementById('tabPrev');
+    const tabG = document.getElementById('tabGcode');
+    const setView = (v)=>{
+      rightBody?.classList?.toggle('view-preview', v==='preview');
+      rightBody?.classList?.toggle('view-gcode', v==='gcode');
+      tabPrev?.classList?.toggle('active', v==='preview');
+      tabG?.classList?.toggle('active', v==='gcode');
+    };
+    tabPrev?.addEventListener('click', ()=> setView('preview'));
+    tabG?.addEventListener('click', ()=> setView('gcode'));
+    setView('preview');
+  }catch(e){ console.warn(e); }
 }
 // Docked Preview + G-code panels (hosted inside nodes)
 var previewDock = { inited:false, panel:null, body:null };

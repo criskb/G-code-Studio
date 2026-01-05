@@ -1,0 +1,300 @@
+
+
+Based on deep research into modern browser-based slicers (like Kiri:Moto, Cura WASM ports, and various open-source engines), the most efficient path for `G-code-Studio` is a **Hybrid Architecture**.
+
+We will not use a pre-compiled "black box" WASM engine (too hard to customize). Instead, we will use **best-in-class libraries** to handle the hard math while keeping the logic in JavaScript.
+
+Here is the complete instruction manual to upgrade your engine.
+
+---
+
+### Phase 1: The Technology Stack (Dependencies)
+
+These are the specific libraries you need to install. They replace thousands of lines of custom, buggy code.
+
+Run this in your terminal:
+```bash
+npm install clipper-lib three-bvh-csg three-stdlib
+```
+
+#### Why these libraries?
+1.  **`clipper-lib`**: The industry standard for 2D polygon math. It fixes your "Infill Clipping," "Wall Offsetting," and "Path Linking" issues instantly. It uses integer math, so it is precise and bug-free.
+2.  **`three-bvh-csg`**: Uses Bounding Volume Hierarchies (BVH) to perform 3D boolean operations (Union/Subtract) incredibly fast. Use this to verify/fix your mesh before slicing.
+3.  **`three-stdlib`**: Standard utilities for Three.js (likely already there, but ensures compatibility).
+
+---
+
+### Phase 2: The Architecture (Web Workers)
+
+**Rule #1:** Never run the slicer on the Main Thread.
+We will create a dedicated Worker file that handles the math and sends back the data.
+
+#### 1. Create `src/workers/slicer.worker.js`
+
+This worker will receive geometry, process it using `clipper-lib`, and return paths.
+
+```javascript
+/* eslint-disable no-restricted-globals */
+import ClipperLib from 'clipper-lib';
+// Note: You might need to configure vite/webpack to handle this import inside a worker
+// If import fails, use a CDN link or a bundled version.
+
+self.onmessage = function(e) {
+  const { vertices, indices, settings } = e.data;
+
+  console.log("Worker: Starting slice...");
+
+  try {
+    // 1. Coordinate Transformation
+    // Three.js is usually Y-UP. Printers are Z-UP.
+    // We swap Y and Z here.
+    const transformedVertices = new Float32Array(vertices.length);
+    for(let i=0; i<vertices.length; i+=3) {
+      transformedVertices[i] = vertices[i];     // X -> X
+      transformedVertices[i+1] = vertices[i+2]; // Z -> Y (Height)
+      transformedVertices[i+2] = -vertices[i+1];// -Y -> Z (Depth)
+    }
+
+    // 2. Run the Hybrid Engine
+    const layers = sliceModel(transformedVertices, indices, settings);
+
+    self.postMessage({ status: 'success', layers });
+  } catch (error) {
+    self.postMessage({ status: 'error', message: error.message });
+  }
+};
+
+// --- SLICER LOGIC INSIDE WORKER ---
+
+const sliceModel = (verts, inds, settings) => {
+  const { layerHeight } = settings;
+  const layers = [];
+  const clipper = new ClipperLib.Clipper();
+  const scale = 10000; // High precision for Clipper
+
+  // 1. Find Z Bounds
+  let minZ = Infinity, maxZ = -Infinity;
+  for(let i=2; i<verts.length; i+=3) {
+    if(verts[i] < minZ) minZ = verts[i];
+    if(verts[i] > maxZ) maxZ = verts[i];
+  }
+
+  // 2. Iterate Layers
+  for (let z = minZ; z < maxZ; z += layerHeight) {
+    // A. Intersect Triangles (Custom Fast Loop)
+    const segments = intersectTriangles(verts, inds, z);
+    
+    if (segments.length === 0) continue;
+
+    // B. Build Polygons using Clipper
+    // Clipper requires paths to be ordered and closed.
+    // We use Clipper's Simplify/Union to fix the "spiderweb" of raw lines.
+    const clipperSegments = segmentsToClipperPaths(segments, scale);
+    
+    const cleanPolyTree = new ClipperLib.ClipperPolyTree();
+    clipper.AddPaths(clipperSegments, ClipperLib.PolyType.ptSubject, true); // True = Closed polygons usually, but for raw segments, careful.
+    
+    // Actually, simpler workflow for outlines:
+    // 1. Link segments manually (Greedy) -> Open Paths
+    // 2. Feed to Clipper to close them and clean them.
+    
+    // Let's assume we used a linker to make 'paths'
+    const paths = linkSegments(segments); 
+    const clipperPaths = pathsToClipper(paths, scale);
+
+    // C. Generate Infill using Clipper
+    const infillPaths = generateInfill(z, clipperPaths, scale, settings.infillDensity);
+
+    layers.push({
+      z: z,
+      perimeters: clipperPaths, // Already scaled, ready to view/export
+      infill: infillPaths
+    });
+  }
+
+  return layers;
+};
+
+// Helper: Greedy Linking (Simplified)
+const linkSegments = (segments) => {
+  // (Use the logic from previous answer or similar)
+  // Returns array of Arrays [[{x,y}, {x,y}], ...]
+  return []; 
+};
+
+// Helper: Generate Infill (The Correct Way)
+const generateInfill = (z, polygons, scale, density) => {
+  const cpr = new ClipperLib.Clipper();
+  const infillLines = [];
+  
+  // 1. Create bounding box of polygons
+  // (Implementation omitted for brevity, see ClipperLib docs on GetBounds)
+  
+  // 2. Generate Line Pattern (e.g. 45 degree lines)
+  // For every line in pattern:
+  //   Create a "thick" polygon for the line
+  //   Clipper.Execute(Intersection, linePolygon, modelPolygons)
+  //   Result is the clipped line segments.
+
+  return infillLines;
+};
+```
+
+---
+
+### Phase 3: The React Integration
+
+Update your component to offload work to the worker.
+
+**`src/components/SlicerControls.jsx`**
+
+```javascript
+import React, { useEffect, useRef, useState } from 'react';
+
+const SlicerControls = ({ mesh }) => {
+  const workerRef = useRef(null);
+  const [status, setStatus] = useState('Idle');
+  const [layers, setLayers] = useState([]);
+
+  useEffect(() => {
+    // Initialize Worker
+    // Note: Ensure Vite/Webpack is configured to bundle this worker correctly
+    // using ?worker or new Worker(...)
+    workerRef.current = new Worker(new URL('../workers/slicer.worker.js', import.meta.url));
+
+    workerRef.current.onmessage = (e) => {
+      if (e.data.status === 'success') {
+        setStatus(`Done! Generated ${e.data.layers.length} layers.`);
+        setLayers(e.data.layers);
+      } else {
+        setStatus('Error: ' + e.data.message);
+      }
+    };
+
+    return () => workerRef.current.terminate();
+  }, []);
+
+  const handleSlice = () => {
+    if (!mesh) {
+      setStatus("No mesh loaded");
+      return;
+    }
+
+    setStatus("Slicing...");
+
+    // Extract geometry data efficiently
+    const geometry = mesh.geometry;
+    const posAttr = geometry.attributes.position;
+    const idxAttr = geometry.index;
+
+    // Post to worker
+    workerRef.current.postMessage({
+      vertices: posAttr.array,
+      indices: idxAttr ? idxAttr.array : null, // Handle non-indexed
+      settings: {
+        layerHeight: 0.2,
+        infillDensity: 0.2
+      }
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={handleSlice}>Start Slicing</button>
+      <p>Status: {status}</p>
+      {/* Pass layers to Viewer */}
+    </div>
+  );
+};
+
+export default SlicerControls;
+```
+
+---
+
+### Phase 4: Advanced Fixes (Mesh Repair & G-Code)
+
+#### 1. Mesh Repair (Pre-Slicing)
+Before sending data to the worker, run `CSG` operations to ensure the mesh is "solid" (manifold). A bad mesh breaks slicers.
+
+```javascript
+import { subtract, union } from 'three-bvh-csg';
+import * as THREE from 'three';
+
+// In your file loader component
+const validateMesh = (mesh) => {
+  // This is a heavy operation, warn the user
+  const bvh = new THREE.BVH();
+  // ... Implementation involves re-triangulating and checking normals
+  // Alternatively, just warn user if 'non-manifold edges' are detected.
+  console.log("Mesh validation passed (simulated)");
+};
+```
+
+#### 2. Robust G-Code Generation
+Do not write your own G-code string concatenator if you can avoid it. Use a structured generator. Since there isn't a perfect "gcode-generator-js" library, you use a class structure:
+
+**`src/utils/GCodeGenerator.js`**
+
+```javascript
+class GCodeGenerator {
+  constructor(settings) {
+    this.settings = settings;
+    this.buffer = [];
+  }
+
+  addLayer(layer) {
+    this.buffer.push(`;LAYER:${layer.z}`);
+    this.buffer.push(`G0 Z${(layer.z + 0.5).toFixed(3)}`); // Safety Z hop
+
+    // 1. Print Perimeters
+    layer.perimeters.forEach(poly => {
+      // Descale from Clipper (Divide by 10000)
+      const startX = poly[0].X / 10000;
+      const startY = poly[0].Y / 10000;
+      
+      this.buffer.push(`G0 X${startX.toFixed(3)} Y${startY.toFixed(3)} F3000`); // Move to start
+      this.buffer.push(`G1 Z${layer.z.toFixed(3)} F300`); // Lower nozzle
+
+      for(let i=1; i<poly.length; i++) {
+        const x = poly[i].X / 10000;
+        const y = poly[i].Y / 10000;
+        // Add Extrusion calculation here
+        this.buffer.push(`G1 X${x.toFixed(3)} Y${y.toFixed(3)} E1.0 F1800`);
+      }
+    });
+
+    // 2. Print Infill
+    // Same logic as above
+  }
+
+  getGCode() {
+    return this.buffer.join('\n');
+  }
+}
+
+export default GCodeGenerator;
+```
+
+---
+
+### Phase 5: Coordinate System Warning (Critical)
+
+This is the #1 reason slicers fail in the browser.
+*   **Three.js:** Y is Up (0, 1, 0). The model sits on the X-Z plane.
+*   **3D Printer:** Z is Up (0, 0, 1). The model sits on the X-Y plane.
+
+**The Fix:**
+You have two choices:
+1.  **Rotate the Mesh:** `mesh.rotation.x = -Math.PI / 2;` inside the viewer. This aligns the visual with the printer. **Do not** rotate the vertex array data unless necessary.
+2.  **Transform Data:** Inside the Slicer Worker (as shown in Phase 2), swap coordinates: `y = z`, `z = -y`.
+
+### Summary of Actions
+
+1.  **Install** `clipper-lib` and `three-bvh-csg`.
+2.  **Create** `src/workers/slicer.worker.js` and move all math there.
+3.  **Refactor** `SlicerEngine` to use Clipper for linking segments (fixing the broken lines) and generating infill (clipping).
+4.  **Update** `SlicerControls` to send raw ArrayBuffer data to the worker.
+5.  **Transform** coordinates (Y-up to Z-up) inside the worker, not the renderer.
+
+This architecture is the standard for high-performance web slicers. It separates the UI (React), the View (Three.js), and the Logic (Worker/Clipper).

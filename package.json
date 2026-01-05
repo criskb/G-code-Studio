@@ -5,5 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "clipper-lib": "^6.4.2",
+    "three-bvh-csg": "^0.0.17",
+    "three-stdlib": "^2.36.1"
   }
 }

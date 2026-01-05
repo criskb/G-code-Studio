@@ -14,7 +14,8 @@ window.GCODE_STUDIO.NODE_DEFS['Slicer Quality'] = {
     lineWidth:0.45,
     firstLayerLineWidth:0.50,
     elephantFootComp:0.0,
-    detectThinWalls:false
+    detectThinWalls:true,
+    pathSmoothing:0
   }),
   render:(node, mount)=>renderSchema(SCHEMA_SLICER_QUALITY, node, mount),
   evaluate:(node)=>{

@@ -26,7 +26,8 @@ const SCHEMA_SLICER_V2 = [
       {key:"bedAlign", label:"Bed align mesh", ui:"toggle", default:true},
       {key:"mode", label:"Mode", ui:"select", options:[
         ["planar","Planar (layers + shells + infill + top/bottom)"],
-        ["surface","Surface raster (non-planar)"]
+        ["surface","Surface raster (non-planar)"],
+        ["nonplanar_full","Non-planar full (bottom→top with infill)"]
       ], default:"planar"},
     ]},
     { items:[
@@ -57,6 +58,23 @@ const SCHEMA_SLICER_QUALITY = [
     { items:[
       {key:"elephantFootComp", label:"Elephant foot comp", ui:"number", min:0, max:1.0, step:0.01, default:0.0},
       {key:"detectThinWalls", label:"Detect thin walls (UI)", ui:"toggle", default:false},
+    ]},
+    { items:[
+      {key:"pathSmoothing", label:"Path smoothing strength", ui:"number", min:0, max:5, step:0.1, default:0},
+    ]},
+  ]},
+  { kind:"group", title:"Adaptive Fidelity", rows:[
+    { items:[
+      {key:"fidelityMode", label:"Fidelity", ui:"select", options:[["draft","Draft"],["balanced","Balanced"],["hd","HD"]], default:"balanced"},
+      {key:"adaptiveBy", label:"Adaptive by", ui:"select", options:[["curvature","Curvature"],["cuspHeight","Cusp height"],["both","Both"]], default:"both"},
+    ]},
+    { items:[
+      {key:"maxChordError", label:"Max chord error", ui:"number", min:0.005, max:0.5, step:0.005, default:0.05},
+      {key:"minSegmentLen", label:"Min segment length", ui:"number", min:0.01, max:2.0, step:0.01, default:0.08},
+    ]},
+    { items:[
+      {key:"preserveArcs", label:"Preserve arcs", ui:"toggle", default:true},
+      {key:"_", label:" ", ui:"text", disabled:true, default:""},
     ]},
   ]},
 ];
@@ -225,6 +243,7 @@ const SCHEMA_SLICER_SURFACE_RASTER = [
 const DEFAULT_SLICER_SETTINGS = {
   layerHeight:0.2, firstLayerHeight:0.24, lineWidth:0.45, firstLayerLineWidth:0.50,
   elephantFootComp:0.0, detectThinWalls:false,
+  pathSmoothing:0,
   perimeters:2, spiralVase:false, seamMode:"nearest", wallOrdering:"inner>outer", gapFill:false, wallOverlap:15,
   infillPct:15, infillPattern:"grid", infillAngle:45, serpentine:true, brickLayer:false, infillLineWidth:0,
   topLayers:4, bottomLayers:4, solidPattern:"", ironing:false, skinOverlap:15, monotonic:false,
@@ -235,6 +254,7 @@ const DEFAULT_SLICER_SETTINGS = {
   fanFirstLayer:0, fanOtherLayers:100, minLayerTime:0, slowDownBelow:0,
   maxLayers:0, maxSegs:0,
   spacing:1.0, step:0.6, angleDeg:0, margin:0, surfaceSerp:true, cellSize:0, maxPts:0
+  , fidelityMode:"balanced", adaptiveBy:"both", maxChordError:0.05, minSegmentLen:0.08, preserveArcs:true
 };
 
 const SCHEMA_HD_SLICE_ENGINE = [
