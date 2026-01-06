@@ -29,11 +29,16 @@ window.GCODE_STUDIO.NODE_DEFS['Transform'] = {
       const a = rad(d.rotDeg||0);
       const ca=Math.cos(a), sa=Math.sin(a);
       const s = d.scale||1;
+      const tx = Number(d.tx||0), ty = Number(d.ty||0);
       const out = path.map(p=>{
-        const x = (p.x*s), y=(p.y*s);
-        const xr = x*ca - y*sa;
-        const yr = x*sa + y*ca;
-        return {...p, x:xr + (d.tx||0), y:yr + (d.ty||0)};
+        const px = (isFinite(p.x) ? Number(p.x) : (isFinite(p.X) ? Number(p.X) : 0)) * s;
+        const py = (isFinite(p.y) ? Number(p.y) : (isFinite(p.Y) ? Number(p.Y) : 0)) * s;
+        const xr = px*ca - py*sa;
+        const yr = px*sa + py*ca;
+        const nx = xr + tx;
+        const ny = yr + ty;
+        const outPt = { ...p, x: nx, y: ny, X: nx, Y: ny };
+        return outPt;
       });
       return { out };
     }

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicRoot = path.join(__dirname, "public");
+const primitivesRoot = path.join(__dirname, "Primitives");
 const userConfigDir = path.join(os.homedir(), ".gcode-studio");
 const userConfigPath = path.join(userConfigDir, "config.json");
 
@@ -18,13 +19,18 @@ const mimeTypes = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".webp": "image/webp"
+  ".webp": "image/webp",
+  ".stl": "model/stl"
 };
 
 async function serveStatic(req, res) {
   const urlPath = req.url.split("?")[0];
   const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-  const filePath = path.join(publicRoot, safePath === "/" ? "/index.html" : safePath);
+  let filePath = path.join(publicRoot, safePath === "/" ? "/index.html" : safePath);
+  if (safePath.startsWith("/primitives/")){
+    const rel = safePath.slice("/primitives/".length);
+    filePath = path.join(primitivesRoot, rel);
+  }
 
   try {
     const stat = await fs.stat(filePath);

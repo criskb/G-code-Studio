@@ -933,7 +933,14 @@ const g = {
 function applyGraphTransform(){
   const z = state.ui.zoom;
   nodesLayer.style.transform = `translate(${state.ui.panX}px, ${state.ui.panY}px) scale(${z})`;
-  graphBg.style.transform = `translate(${state.ui.panX}px, ${state.ui.panY}px) scale(${z})`;
+  graphBg.style.transform = `none`;
+  const opts = appSettings.graphBg || {};
+  const dot = Math.max(2, Number(opts.dotSize ?? 28)) * z;
+  const grid = Math.max(2, Number(opts.gridSize ?? 32)) * z;
+  const root = document.documentElement;
+  root.style.setProperty("--graph-dot-size", `${dot}px`);
+  root.style.setProperty("--graph-grid-size", `${grid}px`);
+  graphBg.style.backgroundPosition = `${Math.round(state.ui.panX)}px ${Math.round(state.ui.panY)}px`;
   zoomPill.textContent = `Zoom ${Math.round(z*100)}%`;
   requestLinkRedraw();
 }
@@ -2370,7 +2377,7 @@ function toolpathToPath(toolpath, options){
       if(meta.role) meta.role = normalizeFeatureRole(meta.role);
       if(meta.layerHeight == null) meta.layerHeight = layerHeight;
       const travel = move.kind === "travel" || meta.feature === "travel";
-      path.push({x:pos.X, y:pos.Y, z, layer: li, travel, meta, role: meta.role});
+      path.push({x:pos.X, y:pos.Y, X:pos.X, Y:pos.Y, z, layer: li, travel, meta, role: meta.role});
       last = {x, y, z};
     }
   }
@@ -2752,10 +2759,10 @@ function drawPreviewLoop(){
   // Draw grid
   gl.enableVertexAttribArray(preview.aPos);
   const text = getComputedStyle(document.body).getPropertyValue("--text").trim();
-  setColor("#ffffff", 0.14);
+  setColor("#ffffff", 0.60);
   gl.bindBuffer(gl.ARRAY_BUFFER, preview.gridBuf);
   gl.vertexAttribPointer(preview.aPos, 3, gl.FLOAT, false, 0, 0);
-  setConstACol(gl, hexToRGBAf("#ffffff", 0.12));
+  setConstACol(gl, hexToRGBAf("#ffffff", 0.70));
   gl.drawArrays(gl.LINES, 0, preview.counts.grid);
 
   // Draw bed border
@@ -2971,8 +2978,8 @@ function draw2dFallback(machinePath){
   const ctx = c.getContext("2d");
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
-  ctx.globalAlpha = 0.16;
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--text").trim();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 1;
   for(let x=0;x<w;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
   for(let y=0;y<h;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }

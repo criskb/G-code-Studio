@@ -11,7 +11,7 @@
   --accent:#00b48a;
   --accent2:#2f7ef7;
 }
-.topbar{ height: 64px; }
+.topbar{ min-height: 64px; }
 .brand{ border-radius: 14px; }
 .actions{ border-radius: 14px; }
 .btn{ border-radius: 14px; font-size:13px; padding:9px 12px; }
