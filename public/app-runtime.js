@@ -2881,10 +2881,10 @@ if(previewMeshSettings.viewer === "mv"){
         mv.removeAttribute("src");
       }
     }catch(err){ console.warn(err); }
+    glCanvas.style.display="none";
+    fallback2d.style.display="none";
+    return;
   }
-  glCanvas.style.display="none";
-  fallback2d.style.display="none";
-  return;
 }
 
   let prof = null;
