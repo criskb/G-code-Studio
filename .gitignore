@@ -1,9 +1,1 @@
-node_modules/
-macos/node_modules/
 .DS_Store
-macos/.DS_Store
-public/.DS_Store
-dist/
-out/
-tmp/
-*.log
