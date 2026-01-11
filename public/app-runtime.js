@@ -2304,14 +2304,21 @@ const FEATURE_ROLE_ALIASES = {
   perimeters: "wall_outer",
   inner_perimeter: "wall_inner",
   outer_perimeter: "wall_outer",
+  internal_perimeter: "wall_inner",
+  external_perimeter: "wall_outer",
   wall: "walls",
   walls: "walls",
+  wall_outer: "wall_outer",
+  wall_inner: "wall_inner",
+  outer_wall: "wall_outer",
+  inner_wall: "wall_inner",
   skin: "top",
   top_skin: "top",
   bottom_skin: "bottom",
   gap_fill: "infill",
   sparse_infill: "infill",
   solid_infill: "top",
+  dense_infill: "top",
   bridge: "top",
   support: "support",
   support_interface: "support",
@@ -2323,7 +2330,8 @@ const FEATURE_ROLE_ALIASES = {
 function normalizeFeatureRole(raw){
   if(!raw) return "";
   const r = String(raw).toLowerCase().trim();
-  return FEATURE_ROLE_ALIASES[r] || r;
+  const key = r.replace(/[\s-]+/g, "_");
+  return FEATURE_ROLE_ALIASES[key] || FEATURE_ROLE_ALIASES[r] || key;
 }
 
 function tToRGBA(t){
@@ -2347,8 +2355,52 @@ function getPreviewColor(pt){
   return roleToRGBA(normalizeFeatureRole(role));
 }
 
+function extractFeatureRole(source){
+  if(!source || typeof source !== "object") return "";
+  return source.role
+    ?? source.feature
+    ?? source.featureType
+    ?? source.type
+    ?? source.kind
+    ?? source.extrusionRole
+    ?? source.extrusion_role
+    ?? source.pathType
+    ?? source.tag
+    ?? "";
+}
+
+function normalizePreviewPath(path){
+  if(!Array.isArray(path)) return [];
+  return path.map((pt)=>{
+    if(!pt) return null;
+    const meta = (pt.meta && typeof pt.meta === "object") ? {...pt.meta} : {};
+    if(!meta.role){
+      const roleFromMeta = extractFeatureRole(meta);
+      const roleFromPt = extractFeatureRole(pt);
+      meta.role = roleFromMeta || roleFromPt || meta.feature || pt.feature || meta.featureType || pt.featureType || "";
+    }
+    if(meta.role) meta.role = normalizeFeatureRole(meta.role);
+    const out = {...pt, meta};
+    if(!out.role && meta.role) out.role = meta.role;
+    return out;
+  });
+}
+
 function toolpathToPath(toolpath, options){
-  if(!toolpath || !toolpath.layers) return {path:[], warning:""};
+  if(!toolpath) return {path:[], warning:""};
+  if(Array.isArray(toolpath)){
+    return {path: normalizePreviewPath(toolpath), warning:""};
+  }
+  if(!toolpath.layers){
+    if(Array.isArray(toolpath.path)){
+      return {path: normalizePreviewPath(toolpath.path), warning:""};
+    }
+    if(Array.isArray(toolpath.moves)){
+      toolpath = {layers:[{z: toolpath.z ?? 0, moves: toolpath.moves}]};
+    }else{
+      return {path:[], warning:""};
+    }
+  }
   const maxMoves = options?.maxMoves ?? 200000;
   const profile = options?.profile || null;
   let moveCount = 0;
@@ -2373,10 +2425,12 @@ function toolpathToPath(toolpath, options){
       const z = move.z ?? layerZ ?? last?.z ?? 0;
       const pos = profile ? toMachineXY(x, y, profile) : {X:x, Y:y};
       const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
-      if(!meta.role && meta.feature) meta.role = meta.feature;
+      if(!meta.role){
+        meta.role = extractFeatureRole(meta) || extractFeatureRole(move) || meta.feature || move.feature || "";
+      }
       if(meta.role) meta.role = normalizeFeatureRole(meta.role);
       if(meta.layerHeight == null) meta.layerHeight = layerHeight;
-      const travel = move.kind === "travel" || meta.feature === "travel";
+      const travel = move.kind === "travel" || meta.feature === "travel" || meta.role === "travel" || move.type === "travel";
       path.push({x:pos.X, y:pos.Y, X:pos.X, Y:pos.Y, z, layer: li, travel, meta, role: meta.role});
       last = {x, y, z};
     }
@@ -2903,7 +2957,12 @@ if(previewMeshSettings.viewer === "mv"){
   const previewMesh = previewPayload?.mesh || state.outputs.mesh || null;
   const previewToolpath = previewPayload?.toolpath || state.outputs.toolpath || null;
   const previewPath = previewPayload?.path;
-  const overlays = previewPayload?.overlays || state.outputs.path?.overlays || (previewToolpath ? ["featureType"] : []);
+  const overlayRaw = previewPayload?.overlays || state.outputs.path?.overlays || (previewToolpath ? ["featureType"] : []);
+  const overlays = Array.isArray(overlayRaw)
+    ? overlayRaw
+    : (overlayRaw && typeof overlayRaw === "object")
+      ? Object.keys(overlayRaw)
+      : (typeof overlayRaw === "string" ? [overlayRaw] : []);
 
   updatePreviewOverlayOptions(overlays);
   updatePreviewLegend(previewPayload?.legend || null);
@@ -2916,6 +2975,7 @@ if(previewMeshSettings.viewer === "mv"){
     pathForPreview = converted.path;
     warning = converted.warning;
   }
+  pathForPreview = normalizePreviewPath(pathForPreview);
   updatePreviewWarning(previewPayload?.warning || warning);
   updatePreviewControlsFromPath(pathForPreview);
   const filtered = filterPreviewPath(pathForPreview);
