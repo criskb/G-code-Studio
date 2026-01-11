@@ -4101,54 +4101,57 @@ const lastLayer = layers - 1;
 
     // Infill / solid
     const fillPaths = [];
-    const pct = roleSolid ? 100 : infPct;
-    if(pct>0){
-      const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
-      const a1 = ang0 + (L%2)*Math.PI/2;
-      let segA = [];
-      const pat = regionRole ? solidPat : infPat;
-      const holeLoops = region.holes || [];
-      const overPct = clamp(Number(opts.wallOverlap||0), 0, 50) * 0.01;
-      const skinPct = clamp(Number(opts.skinOverlap||0), 0, 50) * 0.01;
-      const insetDist = (per>0 ? (per*lw) : 0) + (regionRole ? lw*(0.4 + skinPct) : infillLW*(0.45 + overPct));
-      const infOuterRaw = offsetPolyMiter(region.outer, -insetDist, Number(opts.cornerMiterLimit||1.5));
-      const infOuter = infOuterRaw ? stripCollinear(infOuterRaw) : null;
-      const expHoles = holeLoops.map(h=>{
-        const r = offsetPolyMiter(h, +insetDist, Number(opts.cornerMiterLimit||1.5));
-        return r ? stripCollinear(r) : h;
-      });
-      if(pat==="concentric"){
-        const loops2 = genConcentricLoops(infOuter || region.outer, spacing);
-        const filtered = expHoles.length
-          ? loops2.filter((lp)=>!expHoles.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
-          : loops2;
-        for(const lp of filtered){
-          for(let i=0;i<lp.length;i++){
-            const p=lp[i];
-            const wHere = regionRole ? lw : infillLW;
-            fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(regionRole||"infill"), width:wHere, height:lh}});
+    for(const region of regions){
+      const regionRole = roleSolid || region.supportRole || null;
+      const pct = roleSolid ? 100 : infPct;
+      if(pct>0){
+        const spacing = roleSolid ? (lw*0.95) : clamp(infillLW / Math.max(0.01, pct/100), infillLW*1.05, infillLW*12);
+        const a1 = ang0 + (L%2)*Math.PI/2;
+        let segA = [];
+        const pat = regionRole ? solidPat : infPat;
+        const holeLoops = region.holes || [];
+        const overPct = clamp(Number(opts.wallOverlap||0), 0, 50) * 0.01;
+        const skinPct = clamp(Number(opts.skinOverlap||0), 0, 50) * 0.01;
+        const insetDist = (per>0 ? (per*lw) : 0) + (regionRole ? lw*(0.4 + skinPct) : infillLW*(0.45 + overPct));
+        const infOuterRaw = offsetPolyMiter(region.outer, -insetDist, Number(opts.cornerMiterLimit||1.5));
+        const infOuter = infOuterRaw ? stripCollinear(infOuterRaw) : null;
+        const expHoles = holeLoops.map(h=>{
+          const r = offsetPolyMiter(h, +insetDist, Number(opts.cornerMiterLimit||1.5));
+          return r ? stripCollinear(r) : h;
+        });
+        if(pat==="concentric"){
+          const loops2 = genConcentricLoops(infOuter || region.outer, spacing);
+          const filtered = expHoles.length
+            ? loops2.filter((lp)=>!expHoles.some((hole)=>pointInPoly(polyCentroid2D(lp), hole)))
+            : loops2;
+          for(const lp of filtered){
+            for(let i=0;i<lp.length;i++){
+              const p=lp[i];
+              const wHere = regionRole ? lw : infillLW;
+              fillPaths.push({x:p[0], y:p[1], z:zOut, travel:(i===0), layer:L, meta:{layerHeight:lh, role:(regionRole||"infill"), width:wHere, height:lh}});
+            }
           }
-        }
-      }else{
-        const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
-        const basePoly = infOuter || region.outer;
-        segA = genInfillSegmentsPattern(basePoly, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
-        if(expHoles.length || infOuter){
-          segA = segA.filter((s)=>{
-            const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
-            const inside = infOuter ? pointInPoly(mid, infOuter) : true;
-            const notHole = !expHoles.some((hole)=>pointInPoly(mid, hole));
-            return inside && notHole;
-          });
-        }
-        if(segA && segA.length){
-          const roleHere = regionRole || "infill";
-          const wHere = roleHere!=="infill" ? lw : infillLW;
-          const points = pathFromSegments2D(segA, zOut, L, lh, roleHere);
-          for(const pt of points){
-            pt.meta = pt.meta || {}; pt.meta.width = wHere; pt.meta.height = lh;
+        }else{
+          const phase = brick ? ((L%2)? spacing*0.5 : 0) : 0;
+          const basePoly = infOuter || region.outer;
+          segA = genInfillSegmentsPattern(basePoly, spacing, a1, serp, (regionRole||"infill"), pat, L, phase);
+          if(expHoles.length || infOuter){
+            segA = segA.filter((s)=>{
+              const mid = [(s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5];
+              const inside = infOuter ? pointInPoly(mid, infOuter) : true;
+              const notHole = !expHoles.some((hole)=>pointInPoly(mid, hole));
+              return inside && notHole;
+            });
           }
-          fillPaths.push(...points);
+          if(segA && segA.length){
+            const roleHere = regionRole || "infill";
+            const wHere = roleHere!=="infill" ? lw : infillLW;
+            const points = pathFromSegments2D(segA, zOut, L, lh, roleHere);
+            for(const pt of points){
+              pt.meta = pt.meta || {}; pt.meta.width = wHere; pt.meta.height = lh;
+            }
+            fillPaths.push(...points);
+          }
         }
       }
     }
