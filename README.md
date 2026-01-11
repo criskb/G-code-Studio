@@ -23,6 +23,39 @@ G-code Studio is a node-graph workspace for building toolpaths, rules, and print
 
 Both scripts start the local server and print the URL to open in your browser.
 
+## Slicer nodes & engine setup
+G-code Studio includes slicer nodes that call external slicer engines on the server. Ensure the CLI binaries are installed and accessible on the machine running `server.js`.
+
+### Supported slicer nodes
+- **CuraEngine** slicer node
+- **PrusaSlicer** slicer node
+
+### Engine setup requirements
+- Install CuraEngine (from Ultimaker Cura or CuraEngine builds) and/or PrusaSlicer.
+- Confirm the CLI executable is available on the host (e.g., `CuraEngine` / `curaengine`, `prusa-slicer`).
+- Configure the server-side CLI paths (see below) so the slicer nodes can invoke them.
+
+### Configure server-side CLI paths
+Set the CLI paths in your server environment so `server.js` can locate the binaries:
+- `CURAENGINE_PATH` — absolute path to the CuraEngine executable.
+- `PRUSASLICER_PATH` — absolute path to the PrusaSlicer executable.
+
+Example (macOS/Linux):
+```bash
+export CURAENGINE_PATH="/Applications/Ultimaker Cura.app/Contents/Resources/CuraEngine"
+export PRUSASLICER_PATH="/Applications/PrusaSlicer.app/Contents/MacOS/PrusaSlicer"
+```
+
+Example (Windows PowerShell):
+```powershell
+setx CURAENGINE_PATH "C:\Program Files\Ultimaker Cura\CuraEngine.exe"
+setx PRUSASLICER_PATH "C:\Program Files\PrusaSlicer\prusa-slicer.exe"
+```
+
+## Licensing & WASM assets
+- G-code Studio includes AGPL-licensed components. If you deploy or redistribute the app, ensure your distribution complies with AGPL requirements (including source availability for network use).
+- If a slicer node depends on a WASM build, place the WASM assets under `public/` (for example, `public/wasm/`) so they are served by `server.js` and reachable by the client.
+
 ## Settings
 Open **Settings** in the top bar to personalize the workspace.
 
