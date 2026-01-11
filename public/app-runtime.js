@@ -1,6 +1,6 @@
 const NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS;
 const UI_NODE_TYPES = new Set(["Studio View", "Preview", "G-code Output"]);
-const EXPECTED_NODE_DEF_COUNT = 94;
+const EXPECTED_NODE_DEF_COUNT = 95;
 const EXPECTED_NODE_TYPES = [
   "Preview",
   "G-code Output",
