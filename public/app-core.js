@@ -465,9 +465,10 @@ function animateScrubPlayback(ts){
 
 function normalizePreviewRole(role, travel){
   if(travel) return "travel";
-  const r = String(role || "").toLowerCase();
-  if(r === "perimeter" || r === "outer_perimeter") return "wall_outer";
-  if(r === "inner_perimeter") return "wall_inner";
+  const raw = String(role || "").toLowerCase().trim();
+  const r = raw.replace(/[\s-]+/g, "_");
+  if(r === "perimeter" || r === "outer_perimeter" || r === "external_perimeter") return "wall_outer";
+  if(r === "inner_perimeter" || r === "internal_perimeter") return "wall_inner";
   if(r === "skin" || r === "top_skin") return "top";
   if(r === "bottom_skin") return "bottom";
   if(r === "gap_fill" || r === "sparse_infill" || r === "solid_infill") return "infill";
@@ -655,7 +656,12 @@ bindPreviewControls.bound = false;
 
 function updatePreviewOverlayOptions(overlays){
   if(!prevOverlayEl) return;
-  const list = (overlays && overlays.length) ? overlays : ["featureType"];
+  let list = [];
+  if(Array.isArray(overlays)) list = overlays;
+  else if(overlays && typeof overlays === "object") list = Object.keys(overlays);
+  else if(typeof overlays === "string") list = [overlays];
+  list = list.map((item)=>String(item)).filter(Boolean);
+  if(!list.length) list = ["featureType"];
   prevOverlayEl.innerHTML = "";
   for(const item of list){
     const opt = document.createElement("option");
@@ -671,15 +677,25 @@ function updatePreviewOverlayOptions(overlays){
 
 function updatePreviewLegend(legend){
   if(!previewLegendEl) return;
-  if(!legend){
+  if(!legend || typeof legend !== "object"){
     previewLegendEl.style.display = "none";
     return;
   }
   previewLegendEl.style.display = "flex";
-  if(previewLegendTitleEl) previewLegendTitleEl.textContent = `${legend.field || ""} ${legend.unit ? `(${legend.unit})` : ""}`.trim();
-  if(previewLegendRangeEl) previewLegendRangeEl.textContent = `${fmt(legend.min, 2)} → ${fmt(legend.max, 2)}`;
-  if(previewLegendBarEl && legend.colors){
+  if(previewLegendTitleEl){
+    const field = legend.field || "";
+    const unit = legend.unit ? `(${legend.unit})` : "";
+    previewLegendTitleEl.textContent = `${field} ${unit}`.trim();
+  }
+  if(previewLegendRangeEl){
+    const minText = Number.isFinite(legend.min) ? fmt(legend.min, 2) : "";
+    const maxText = Number.isFinite(legend.max) ? fmt(legend.max, 2) : "";
+    previewLegendRangeEl.textContent = (minText || maxText) ? `${minText} → ${maxText}`.trim() : "";
+  }
+  if(previewLegendBarEl && Array.isArray(legend.colors) && legend.colors.length){
     previewLegendBarEl.style.background = `linear-gradient(90deg, ${legend.colors.join(", ")})`;
+  }else if(previewLegendBarEl){
+    previewLegendBarEl.style.background = "";
   }
 }
 
