@@ -133,7 +133,18 @@ function mapCuraRole(raw) {
     "SKIRT": "skirt",
     "BRIM": "skirt",
     "PRIME_TOWER": "support",
-    "TRAVEL": "travel"
+    "TRAVEL": "travel",
+    "EXTERNAL PERIMETER": "wall_outer",
+    "OVERHANG PERIMETER": "wall_outer",
+    "PERIMETER": "wall_inner",
+    "INTERNAL INFILL": "infill",
+    "SOLID INFILL": "bottom",
+    "TOP SOLID INFILL": "top",
+    "BRIDGE INFILL": "infill",
+    "SKIRT/BRIM": "skirt",
+    "SUPPORT MATERIAL": "support",
+    "SUPPORT MATERIAL INTERFACE": "support",
+    "WIPE TOWER": "support"
   };
   return MAP[key] || key.toLowerCase();
 }
@@ -298,10 +309,127 @@ async function resolveCuraGcode(payload) {
   return { gcode };
 }
 
+function normalizeSlicerValue(value) {
+  if (value == null) return null;
+  if (typeof value === "boolean") return value ? "1" : "0";
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(",");
+  if (typeof value === "string") return value.replace(/\r?\n/g, "\\n");
+  return String(value);
+}
+
+function buildPrusaConfig(settings, overrides, profile) {
+  const merged = { ...(settings || {}), ...(overrides || {}) };
+  const rawConfig = merged.configText || merged.prusaConfigText || merged.config || "";
+  delete merged.configText;
+  delete merged.prusaConfigText;
+  delete merged.config;
+  delete merged.enginePath;
+  delete merged.engineArgs;
+
+  const profileDefaults = {};
+  if (profile) {
+    if (profile.nozzle != null) profileDefaults.nozzle_diameter = profile.nozzle;
+    if (profile.filamentDia != null) profileDefaults.filament_diameter = profile.filamentDia;
+    if (profile.tempBed != null) profileDefaults.bed_temperature = profile.tempBed;
+    if (profile.tempNozzle != null) profileDefaults.temperature = profile.tempNozzle;
+    if (profile.layerHeight != null) profileDefaults.layer_height = profile.layerHeight;
+    if (profile.firstLayerHeight != null) profileDefaults.first_layer_height = profile.firstLayerHeight;
+    if (profile.travelSpeed != null) profileDefaults.travel_speed = profile.travelSpeed;
+    if (profile.printSpeed != null) profileDefaults.perimeter_speed = profile.printSpeed;
+    if (profile.startGcode) profileDefaults.start_gcode = profile.startGcode;
+    if (profile.endGcode) profileDefaults.end_gcode = profile.endGcode;
+  }
+
+  for (const [key, value] of Object.entries(profileDefaults)) {
+    if (!(key in merged)) merged[key] = value;
+  }
+
+  const lines = [];
+  if (rawConfig && typeof rawConfig === "string") {
+    lines.push(rawConfig.trim());
+  }
+  for (const [key, value] of Object.entries(merged)) {
+    const normalized = normalizeSlicerValue(value);
+    if (normalized == null || normalized === "") continue;
+    lines.push(`${key} = ${normalized}`);
+  }
+
+  return lines.filter((line) => line.length).join("\n");
+}
+
+async function resolvePrusaGcode(payload) {
+  const slicerPath = payload?.enginePath || process.env.PRUSA_SLICER_PATH || process.env.SLIC3R_PATH || "PrusaSlicer";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gcode-studio-prusa-"));
+  const meshPath = path.join(tmpDir, "input.stl");
+  const outPath = path.join(tmpDir, "output.gcode");
+  const configPath = path.join(tmpDir, "config.ini");
+
+  const mesh = payload?.mesh || {};
+  if (mesh.format === "stl" && typeof mesh.data === "string") {
+    const buf = Buffer.from(mesh.data, "base64");
+    await fs.writeFile(meshPath, buf);
+  } else if (mesh.format === "tris" && Array.isArray(mesh.data)) {
+    const stl = trisToAsciiStl(mesh.data);
+    await fs.writeFile(meshPath, stl, "utf8");
+  } else {
+    throw new Error("Unsupported mesh format.");
+  }
+
+  const configText = buildPrusaConfig(payload?.settings, payload?.overrides, payload?.profile);
+  if (configText) {
+    await fs.writeFile(configPath, configText, "utf8");
+  }
+
+  const rawArgs = payload?.engineArgs || payload?.settings?.engineArgs || [];
+  const args = (Array.isArray(rawArgs) ? rawArgs : [])
+    .map((arg) => String(arg)
+      .replace(/\{input\}/g, meshPath)
+      .replace(/\{output\}/g, outPath)
+      .replace(/\{config\}/g, configPath)
+    );
+
+  if (!args.length) {
+    args.push("--export-gcode", "--load", configPath, "--output", outPath, meshPath);
+  }
+
+  await execFileAsync(slicerPath, args, { timeout: 1000 * 60 * 6 });
+  const gcode = await fs.readFile(outPath, "utf8");
+  return { gcode };
+}
+
 const server = createServer(async (req, res) => {
   if (!req.url) {
     res.writeHead(400);
     res.end("Bad request");
+    return;
+  }
+  if (req.url.startsWith("/api/slice/prusa")) {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: "Method not allowed" }));
+      return;
+    }
+    try {
+      const body = await readBodyJson(req);
+      const payload = body || {};
+      const sliceResult = await resolvePrusaGcode(payload);
+      if (!sliceResult.gcode) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "No G-code produced." }));
+        return;
+      }
+      const toolpath = parseGcodeToToolpath(sliceResult.gcode, payload.profile || null);
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        ok: true,
+        gcode: sliceResult.gcode,
+        toolpath,
+        stats: toolpath.stats
+      }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: err?.message || "PrusaSlicer failed." }));
+    }
     return;
   }
   if (req.url.startsWith("/api/slice/cura")) {
