@@ -11,6 +11,18 @@ const LS_KEY = "gcode-studio:nodegraph:v3";
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const DEFAULT_NODE_W = 460;
 const DEFAULT_NODE_H = 240;
+const DEFAULT_EXTERNAL_SLICER_SETTINGS = {
+  quality: {},
+  walls: {},
+  infill: {},
+  topBottom: {},
+  speeds: {},
+  travel: {},
+  cooling: {},
+  limits: {},
+  surfaceRaster: {},
+  overrides: {}
+};
 const fmt = (n, d=2)=> (isFinite(n)? Number(n).toFixed(d) : "—");
 const rad = (deg)=>deg * Math.PI / 180;
 const uid = ()=> Math.random().toString(16).slice(2,10) + "-" + Math.random().toString(16).slice(2,6);
@@ -20,6 +32,21 @@ const TYPE_ALIASES = {
 };
 function normalizePortType(type){
   return TYPE_ALIASES[type] || type;
+}
+function normalizeExternalSlicerSettings(input){
+  const src = (input && typeof input === "object") ? input : {};
+  const settings = (src.settings && typeof src.settings === "object") ? src.settings : src;
+  const baseOverrides = (settings.overrides && typeof settings.overrides === "object") ? settings.overrides : {};
+  const extraOverrides = (src.overrides && typeof src.overrides === "object") ? src.overrides : {};
+  return {
+    ...DEFAULT_EXTERNAL_SLICER_SETTINGS,
+    ...settings,
+    overrides: {
+      ...DEFAULT_EXTERNAL_SLICER_SETTINGS.overrides,
+      ...baseOverrides,
+      ...extraOverrides
+    }
+  };
 }
 function isTypeCompatible(a, b){
   return normalizePortType(a) === normalizePortType(b);

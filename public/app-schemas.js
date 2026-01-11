@@ -45,6 +45,31 @@ const SCHEMA_SLICER_V2 = [
   ], note:"<span class='hint'>Connect slicer category nodes (Quality, Walls, Infill, Top/Bottom, etc.) to feed settings into this slicer.</span>" },
 ];
 
+// External slicer contract: provide mesh/profile/settings/overrides inputs and emit toolpath/path/stats
+// plus optional preview (toolpath/path/mesh + overlays/legend/warning) to integrate with preview logic.
+const SCHEMA_EXTERNAL_SLICER = [
+  { kind:"group", title:"Inputs", rows:[
+    { items:[
+      {key:"mesh", label:"Mesh input", ui:"text", disabled:true, default:"mesh"},
+      {key:"profile", label:"Printer profile", ui:"text", disabled:true, default:"profile"},
+    ]},
+    { items:[
+      {key:"settings", label:"Slicer settings", ui:"text", disabled:true, default:"settings"},
+      {key:"overrides", label:"Overrides (infill, walls, etc.)", ui:"text", disabled:true, default:"overrides"},
+    ]},
+  ]},
+  { kind:"group", title:"Outputs", rows:[
+    { items:[
+      {key:"toolpath", label:"Toolpath", ui:"text", disabled:true, default:"toolpath"},
+      {key:"path", label:"Path (preview)", ui:"text", disabled:true, default:"path"},
+    ]},
+    { items:[
+      {key:"stats", label:"Stats", ui:"text", disabled:true, default:"stats"},
+      {key:"preview", label:"Preview payload", ui:"text", disabled:true, default:"preview"},
+    ]},
+  ]},
+];
+
 const SCHEMA_SLICER_QUALITY = [
   { kind:"group", title:"Quality", rows:[
     { items:[
