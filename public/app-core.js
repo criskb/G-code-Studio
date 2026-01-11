@@ -4010,8 +4010,6 @@ const lastLayer = layers - 1;
       }
       return inside;
     };
-    const holeLoops = loops.slice(1).filter((lp)=> lp.length && isPointInPoly(lp[0], outer));
-
     const isBottom = (L < botN);
     const isTop = (L >= (lastLayer - topN + 1));
     const roleSolid = isBottom ? "bottom" : (isTop ? "top" : null);
