@@ -151,6 +151,7 @@ function parsePrusaGcodeToToolpath(gcode, profile = null){
 
   return {
     units: "mm",
+    coords: "machine",
     absoluteExtrusion: absoluteE,
     layers,
     stats: {
