@@ -37,7 +37,7 @@ G-code Studio includes slicer nodes that call external slicer engines on the ser
 
 ### Configure server-side CLI paths
 Set the CLI paths in your server environment so `server.js` can locate the binaries:
-- `CURAENGINE_PATH` — absolute path to the CuraEngine executable.
+- `CURA_ENGINE_PATH` or `CURAENGINE_PATH` — absolute path to the CuraEngine executable.
 - `PRUSASLICER_PATH` — absolute path to the PrusaSlicer executable.
 
 Example (macOS/Linux):

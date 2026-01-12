@@ -1,7 +1,7 @@
 window.GCODE_STUDIO = window.GCODE_STUDIO || {};
 window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
-window.GCODE_STUDIO.NODE_DEFS['Control Experiement'] = {
-  title:"Control Experiement",
+const controlExperimentNode = {
+  title:"Control Experiment",
   tag:"generator",
   desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
   inputs:[{name:"profile", type:"profile"}],
@@ -89,23 +89,31 @@ window.GCODE_STUDIO.NODE_DEFS['Control Experiement'] = {
       addRow("Numerator", elNumber(d.numer??5, v=>{ d.numer=v; markDirtyAuto(); saveState(); }, 1));
       addRow("Rings", elNumber(d.rings??3, v=>{ d.rings=v; markDirtyAuto(); saveState(); }, 1));
       addRow("Ring step", elNumber(d.ringStep??8, v=>{ d.ringStep=v; markDirtyAuto(); saveState(); }, 0.1));
-    
-}else if(d.model==="hex_adapter"){
-  addRow("Across flats", elNumber(d.hexAcross??34, v=>{ d.hexAcross=v; markDirtyAuto(); saveState(); }, 0.1));
-  addRow("Wall (mm)", elNumber(d.hexWall??3, v=>{ d.hexWall=v; markDirtyAuto(); saveState(); }, 0.1));
-}else if(d.model==="lattice_cylinder"){
-  addRow("Radius", elNumber(d.latRadius??30, v=>{ d.latRadius=v; markDirtyAuto(); saveState(); }, 0.1));
-  addRow("Pitch", elNumber(d.latPitch??6, v=>{ d.latPitch=v; markDirtyAuto(); saveState(); }, 0.1));
-  addRow("Angle (deg)", elNumber(d.latAngleDeg??60, v=>{ d.latAngleDeg=v; markDirtyAuto(); saveState(); }, 1));
-}
-mount.appendChild(group);
+    }else if(d.model==="hex_adapter"){
+      addRow("Across flats", elNumber(d.hexAcross??34, v=>{ d.hexAcross=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Wall (mm)", elNumber(d.hexWall??3, v=>{ d.hexWall=v; markDirtyAuto(); saveState(); }, 0.1));
+    }else if(d.model==="nonplanar_spacer"){
+      addRow("Radius", elNumber(d.spacerR??18, v=>{ d.spacerR=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Wall (mm)", elNumber(d.spacerWall??3, v=>{ d.spacerWall=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Wave amp", elNumber(d.spacerWaveAmp??0.8, v=>{ d.spacerWaveAmp=v; markDirtyAuto(); saveState(); }, 0.05));
+      addRow("Waves", elNumber(d.spacerWaves??8, v=>{ d.spacerWaves=v; markDirtyAuto(); saveState(); }, 1));
+    }else if(d.model==="anyangle_phone_stand"){
+      addRow("Width", elNumber(d.standW??70, v=>{ d.standW=v; markDirtyAuto(); saveState(); }, 0.5));
+      addRow("Depth", elNumber(d.standD??60, v=>{ d.standD=v; markDirtyAuto(); saveState(); }, 0.5));
+      addRow("Angle (deg)", elNumber(d.standAngleDeg??55, v=>{ d.standAngleDeg=v; markDirtyAuto(); saveState(); }, 1));
+      addRow("Pitch", elNumber(d.standPitch??6, v=>{ d.standPitch=v; markDirtyAuto(); saveState(); }, 0.5));
+    }else if(d.model==="lattice_cylinder"){
+      addRow("Radius", elNumber(d.latRadius??30, v=>{ d.latRadius=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Pitch", elNumber(d.latPitch??6, v=>{ d.latPitch=v; markDirtyAuto(); saveState(); }, 0.1));
+      addRow("Angle (deg)", elNumber(d.latAngleDeg??60, v=>{ d.latAngleDeg=v; markDirtyAuto(); saveState(); }, 1));
+    }
+    mount.appendChild(group);
   },
   evaluate:(node, ctx)=>{
     const d=node.data;
     const lh = Math.max(0.01, Number(d.layerHeight||0.24));
     const cx = Number(d.centerX||0), cy = Number(d.centerY||0);
     const H  = Math.max(lh, Number(d.height||80));
-    const base = ctx.base || baseFromProfile(ctx.getInput(node.id, "profile")?.profile || ctx.defaultProfile || {});
     const Nlayers = Math.max(1, Math.ceil(H / lh));
 
     const pts=[];
@@ -123,6 +131,14 @@ mount.appendChild(group);
       for(let i=0;i<=steps;i++){
         const t=i/steps;
         pushPt(cx + x0 + (x1-x0)*t, cy + y0 + (y1-y0)*t, z, role, false, layer);
+      }
+    };
+
+    const polygon=(r, z, role, layer, sides=6, phase=0)=>{
+      for(let i=0;i<=sides;i++){
+        const t=i/sides;
+        const a=phase + t*Math.PI*2;
+        pushPt(cx + r*Math.cos(a), cy + r*Math.sin(a), z, role, false, layer);
       }
     };
 
@@ -195,78 +211,89 @@ mount.appendChild(group);
           line(0,0,x1,y1,z,"wall",L,60);
         }
       }
-
-}else if(d.model==="nonplanar_spacer"){
-  const R = Math.max(0.2, Number(d.spacerR||18));
-  const wall = Math.max(0.2, Number(d.spacerWall||3));
-  const A = Number(d.spacerWaveAmp||0);
-  const waves = Math.max(1, Math.floor(Number(d.spacerWaves||8)));
-  const Rout = R + wall*0.5;
-  const Rin = Math.max(0.1, R - wall*0.5);
-
-  // one continuous nonplanar-ish spiral wall between bottom and top
-  const loops = Math.max(2, Nlayers);
-  const segPer = 200;
-  const total = loops*segPer;
-  for(let i=0;i<=total;i++){
-    const u=i/total;
-    const z0 = u*H;
-    const layer = Math.floor(z0/lh);
-    const theta = u*loops*Math.PI*2;
-    const z = z0 + A*Math.sin(theta*waves);
-    const r = Rout;
-    pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
-  }
-  // inner wall (planar rings)
-  for(let L=0; L<Nlayers; L++){
-    const z=L*lh;
-    for(let i=0;i<=120;i++){
-      const t=i/120;
-      const a=t*Math.PI*2;
-      pushPt(cx + Rin*Math.cos(a), cy + Rin*Math.sin(a), z, "inner_wall", false, L);
-    }
-  }
-
-}else if(d.model==="anyangle_phone_stand"){
-  const W = Math.max(5, Number(d.standW||70));
-  const D = Math.max(5, Number(d.standD||60));
-  const ang = clamp(Number(d.standAngleDeg||55), 5, 85) * Math.PI/180;
-  const pitch = Math.max(1, Number(d.standPitch||6));
-  const slope = Math.tan(ang);
-
-  // A sloped lattice "ramp": z increases with Y to approximate an any-angle stand surface.
-  // Build in multiple layers, but each layer prints a nonplanar-ish grid within that band.
-  const halfW = W*0.5;
-  const stepsX = Math.max(2, Math.floor(W/pitch));
-  const stepsY = Math.max(2, Math.floor(D/pitch));
-
-  for(let L=0; L<Nlayers; L++){
-    const zBase=L*lh;
-    const y0 = (L/Nlayers) * D;
-    const y1 = ((L+1)/Nlayers) * D;
-    // zig lines across width
-    for(let j=0;j<=stepsY;j++){
-      const y = y0 + (j/stepsY)*(y1-y0);
-      const z = zBase + y*slope*0.05; // small slope per layer band (keeps within sane Z)
-      const dir = (j%2===0) ? 1 : -1;
-      for(let i=0;i<=stepsX;i++){
-        const t = dir===1 ? i/stepsX : 1-(i/stepsX);
-        const x = -halfW + t*W;
-        pushPt(cx + x, cy + y, z, "infill", false, L);
+    }else if(d.model==="hex_adapter"){
+      const across = Math.max(1, Number(d.hexAcross||34));
+      const wall = Math.max(0.2, Number(d.hexWall||3));
+      const apothem = across * 0.5;
+      const outerR = apothem / Math.cos(Math.PI/6);
+      const innerA = apothem - wall;
+      const innerR = innerA > 0 ? innerA / Math.cos(Math.PI/6) : 0;
+      const phase = Math.PI/6;
+      for(let L=0; L<Nlayers; L++){
+        const z=L*lh;
+        polygon(outerR, z, "wall", L, 6, phase);
+        if(innerR > 0){
+          polygon(innerR, z, "inner_wall", L, 6, phase);
+        }
       }
-    }
-    // outline rectangle (planar for stability)
-    const zO = zBase;
-    line(-halfW, 0,  halfW, 0, zO, "wall", L, 40);
-    line( halfW, 0,  halfW, D, zO, "wall", L, 40);
-    line( halfW, D, -halfW, D, zO, "wall", L, 40);
-    line(-halfW, D, -halfW, 0, zO, "wall", L, 40);
-  }
+    }else if(d.model==="nonplanar_spacer"){
+      const R = Math.max(0.2, Number(d.spacerR||18));
+      const wall = Math.max(0.2, Number(d.spacerWall||3));
+      const A = Number(d.spacerWaveAmp||0);
+      const waves = Math.max(1, Math.floor(Number(d.spacerWaves||8)));
+      const Rout = R + wall*0.5;
+      const Rin = Math.max(0.1, R - wall*0.5);
 
-}else if(d.model==="lattice_cylinder"){
+      // one continuous nonplanar-ish spiral wall between bottom and top
+      const loops = Math.max(2, Nlayers);
+      const segPer = 200;
+      const total = loops*segPer;
+      for(let i=0;i<=total;i++){
+        const u=i/total;
+        const z0 = u*H;
+        const layer = Math.floor(z0/lh);
+        const theta = u*loops*Math.PI*2;
+        const z = z0 + A*Math.sin(theta*waves);
+        const r = Rout;
+        pushPt(cx + r*Math.cos(theta), cy + r*Math.sin(theta), z, "wall", false, layer);
+      }
+      // inner wall (planar rings)
+      for(let L=0; L<Nlayers; L++){
+        const z=L*lh;
+        for(let i=0;i<=120;i++){
+          const t=i/120;
+          const a=t*Math.PI*2;
+          pushPt(cx + Rin*Math.cos(a), cy + Rin*Math.sin(a), z, "inner_wall", false, L);
+        }
+      }
+    }else if(d.model==="anyangle_phone_stand"){
+      const W = Math.max(5, Number(d.standW||70));
+      const D = Math.max(5, Number(d.standD||60));
+      const ang = clamp(Number(d.standAngleDeg||55), 5, 85) * Math.PI/180;
+      const pitch = Math.max(1, Number(d.standPitch||6));
+      const slope = Math.tan(ang);
+
+      // A sloped lattice "ramp": z increases with Y to approximate an any-angle stand surface.
+      // Build in multiple layers, but each layer prints a nonplanar-ish grid within that band.
+      const halfW = W*0.5;
+      const stepsX = Math.max(2, Math.floor(W/pitch));
+      const stepsY = Math.max(2, Math.floor(D/pitch));
+
+      for(let L=0; L<Nlayers; L++){
+        const zBase=L*lh;
+        const y0 = (L/Nlayers) * D;
+        const y1 = ((L+1)/Nlayers) * D;
+        // zig lines across width
+        for(let j=0;j<=stepsY;j++){
+          const y = y0 + (j/stepsY)*(y1-y0);
+          const z = zBase + y*slope*0.05; // small slope per layer band (keeps within sane Z)
+          const dir = (j%2===0) ? 1 : -1;
+          for(let i=0;i<=stepsX;i++){
+            const t = dir===1 ? i/stepsX : 1-(i/stepsX);
+            const x = -halfW + t*W;
+            pushPt(cx + x, cy + y, z, "infill", false, L);
+          }
+        }
+        // outline rectangle (planar for stability)
+        const zO = zBase;
+        line(-halfW, 0,  halfW, 0, zO, "wall", L, 40);
+        line( halfW, 0,  halfW, D, zO, "wall", L, 40);
+        line( halfW, D, -halfW, D, zO, "wall", L, 40);
+        line(-halfW, D, -halfW, 0, zO, "wall", L, 40);
+      }
+    }else if(d.model==="lattice_cylinder"){
       const R = Math.max(1, Number(d.latRadius||30));
       const pitch = Math.max(lh, Number(d.latPitch||6));
-      const ang = (Number(d.latAngleDeg||60) * Math.PI/180);
       // two helical families
       const seg = Nlayers*80;
       const turns = H / pitch;
@@ -289,3 +316,6 @@ mount.appendChild(group);
     return { path: pts, out: pts };
   }
 };
+
+window.GCODE_STUDIO.NODE_DEFS['Control Experiement'] = controlExperimentNode;
+window.GCODE_STUDIO.NODE_DEFS['Control Experiment'] = controlExperimentNode;

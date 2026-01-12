@@ -173,7 +173,13 @@
     .panel .body{ padding:12px; overflow:auto; flex:1; min-height:0; }
 
     .left{ grid-column:1; grid-row:2; }
-    .center{ grid-column:1; grid-row:2; position:relative; min-width:0; }
+    .center{
+      grid-column:1;
+      grid-row:2;
+      position:relative;
+      min-width:0;
+      margin: 0;
+    }
     .right{ grid-column:2; grid-row:2; }
 
     .divider{ height:1px; background:var(--stroke); margin:12px 0; }
