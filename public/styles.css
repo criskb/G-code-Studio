@@ -250,7 +250,7 @@
     /* Graph canvas */
     .graphWrap{
       position:absolute; inset:0;
-      border-radius:var(--radius);
+      border-radius:inherit;
       overflow:hidden;
       background: var(--bg0);
     }
