@@ -422,7 +422,9 @@ const server = createServer(async (req, res) => {
       const level = String(body?.level || "info").toLowerCase();
       const label = "[client-log]";
       if (level === "error") {
-        console.error(label, JSON.stringify(body));
+        const fnLabel = body?.functionName ? ` ${body.functionName}` : "";
+        const nodeLabel = body?.node?.type ? ` ${body.node.type}` : "";
+        console.error(`${label}${nodeLabel}${fnLabel}`, JSON.stringify(body));
       } else if (level === "warn" || level === "warning") {
         console.warn(label, JSON.stringify(body));
       } else {

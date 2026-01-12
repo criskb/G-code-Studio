@@ -69,6 +69,7 @@ function evalNode(nodeId, ctx, stack=[]){
   if(stack.includes(nodeId)) throw new Error("Cycle detected: " + [...stack, nodeId].join(" → "));
   const def = NODE_DEFS[node.type];
   if(!def) throw new Error("Unknown node type: " + node.type);
+  const fnName = def.evaluate?.name || "evaluate";
   const start = performance.now();
   try{
     const out = def.evaluate(node, ctx);
@@ -77,16 +78,19 @@ function evalNode(nodeId, ctx, stack=[]){
       level: "info",
       event: "node.evaluate",
       node: { id: node.id, type: node.type },
+      functionName: fnName,
       durationMs,
       outputs: out ? Object.keys(out) : []
     });
     evalCache.set(nodeId, out);
     return out;
   }catch(error){
+    console.error("[node-error]", node.type, node.id, fnName, error);
     sendNodeLog({
       level: "error",
       event: "node.error",
       node: { id: node.id, type: node.type },
+      functionName: fnName,
       error: {
         message: error?.message || String(error),
         stack: error?.stack || ""
