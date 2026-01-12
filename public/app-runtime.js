@@ -70,18 +70,8 @@ function evalNode(nodeId, ctx, stack=[]){
   const def = NODE_DEFS[node.type];
   if(!def) throw new Error("Unknown node type: " + node.type);
   const fnName = def.evaluate?.name || "evaluate";
-  const start = performance.now();
   try{
     const out = def.evaluate(node, ctx);
-    const durationMs = Math.round(performance.now() - start);
-    sendNodeLog({
-      level: "info",
-      event: "node.evaluate",
-      node: { id: node.id, type: node.type },
-      functionName: fnName,
-      durationMs,
-      outputs: out ? Object.keys(out) : []
-    });
     evalCache.set(nodeId, out);
     return out;
   }catch(error){
