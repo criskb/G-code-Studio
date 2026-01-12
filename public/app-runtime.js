@@ -19,6 +19,7 @@ const nodeDefDiagnostics = {
   missingTypes: [],
   warned: false,
 };
+const LOG_ENDPOINT = "/api/logs";
 function updateNodeDefDiagnostics(){
   const total = Object.keys(NODE_DEFS || {}).length;
   const missingTypes = EXPECTED_NODE_TYPES.filter((type)=>!NODE_DEFS?.[type]);
@@ -27,6 +28,26 @@ function updateNodeDefDiagnostics(){
   nodeDefDiagnostics.lowCount = lowCount;
   nodeDefDiagnostics.missingTypes = missingTypes;
   return nodeDefDiagnostics;
+}
+function sendNodeLog(payload){
+  try{
+    const body = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      ...payload
+    });
+    if(navigator.sendBeacon){
+      const ok = navigator.sendBeacon(LOG_ENDPOINT, new Blob([body], {type:"application/json"}));
+      if(ok) return;
+    }
+    fetch(LOG_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true
+    }).catch(()=>{});
+  }catch{
+  }
 }
 
 /* ---------------------------
@@ -48,9 +69,35 @@ function evalNode(nodeId, ctx, stack=[]){
   if(stack.includes(nodeId)) throw new Error("Cycle detected: " + [...stack, nodeId].join(" → "));
   const def = NODE_DEFS[node.type];
   if(!def) throw new Error("Unknown node type: " + node.type);
-  const out = def.evaluate(node, ctx);
-  evalCache.set(nodeId, out);
-  return out;
+  const fnName = def.evaluate?.name || "evaluate";
+  const start = performance.now();
+  try{
+    const out = def.evaluate(node, ctx);
+    const durationMs = Math.round(performance.now() - start);
+    sendNodeLog({
+      level: "info",
+      event: "node.evaluate",
+      node: { id: node.id, type: node.type },
+      functionName: fnName,
+      durationMs,
+      outputs: out ? Object.keys(out) : []
+    });
+    evalCache.set(nodeId, out);
+    return out;
+  }catch(error){
+    console.error("[node-error]", node.type, node.id, fnName, error);
+    sendNodeLog({
+      level: "error",
+      event: "node.error",
+      node: { id: node.id, type: node.type },
+      functionName: fnName,
+      error: {
+        message: error?.message || String(error),
+        stack: error?.stack || ""
+      }
+    });
+    throw error;
+  }
 }
 
 function collectPreviewOutputs(){

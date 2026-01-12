@@ -411,6 +411,33 @@ const server = createServer(async (req, res) => {
     res.end("Bad request");
     return;
   }
+  if (req.url.startsWith("/api/logs")) {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: "Method not allowed" }));
+      return;
+    }
+    try {
+      const body = await readBodyJson(req);
+      const level = String(body?.level || "info").toLowerCase();
+      const label = "[client-log]";
+      if (level === "error") {
+        const fnLabel = body?.functionName ? ` ${body.functionName}` : "";
+        const nodeLabel = body?.node?.type ? ` ${body.node.type}` : "";
+        console.error(`${label}${nodeLabel}${fnLabel}`, JSON.stringify(body));
+      } else if (level === "warn" || level === "warning") {
+        console.warn(label, JSON.stringify(body));
+      } else {
+        console.log(label, JSON.stringify(body));
+      }
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: err?.message || "Invalid JSON" }));
+    }
+    return;
+  }
   if (req.url.startsWith("/api/slice/prusa")) {
     if (req.method !== "POST") {
       res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
