@@ -2440,6 +2440,8 @@ function toolpathToPath(toolpath, options){
   }
   const maxMoves = options?.maxMoves ?? 200000;
   const profile = options?.profile || null;
+  const coords = options?.coords || (toolpath && typeof toolpath === "object" ? toolpath.coords : null) || "machine";
+  const applyProfile = !!(profile && coords !== "machine");
   let moveCount = 0;
   for(const layer of toolpath.layers){ moveCount += (layer.moves||[]).length; }
   const step = moveCount > maxMoves ? Math.ceil(moveCount / maxMoves) : 1;
@@ -2460,7 +2462,7 @@ function toolpathToPath(toolpath, options){
       const x = move.x ?? last?.x ?? 0;
       const y = move.y ?? last?.y ?? 0;
       const z = move.z ?? layerZ ?? last?.z ?? 0;
-      const pos = profile ? toMachineXY(x, y, profile) : {X:x, Y:y};
+      const pos = applyProfile ? toMachineXY(x, y, profile) : {X:x, Y:y};
       const meta = (move.meta && typeof move.meta === "object") ? {...move.meta} : (move.meta ? {value:move.meta} : {});
       if(!meta.role){
         meta.role = extractFeatureRole(meta) || extractFeatureRole(move) || meta.feature || move.feature || "";

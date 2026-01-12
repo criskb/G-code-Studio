@@ -160,7 +160,7 @@ function toolpathFromPath(path, profile){
     const fPrint = Number(p.speedPrint||p.wallSpeed||1800);
     curLayer.moves.push({ kind:"extrude", x:b.X, y:b.Y, z:b.z, e:eAbs, f: fPrint, meta:{ feature: feat, width:w, height:h, tool:0 } });
   }
-  return { units:"mm", absoluteExtrusion:true, layers, stats:{ length_mm:length, extruded_mm3:0, time_s_est:0 } };
+  return { units:"mm", coords:"machine", absoluteExtrusion:true, layers, stats:{ length_mm:length, extruded_mm3:0, time_s_est:0 } };
 }
 function simpleReport(title, details){
   return { title, ...details, createdAt: new Date().toISOString() };
