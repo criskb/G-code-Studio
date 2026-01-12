@@ -23,15 +23,20 @@ const mimeTypes = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
-  ".stl": "model/stl"
+  ".stl": "model/stl",
+  ".wasm": "application/wasm",
+  ".gcode": "text/plain; charset=utf-8"
 };
 
 async function serveStatic(req, res) {
   const urlPath = req.url.split("?")[0];
-  const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-  let filePath = path.join(publicRoot, safePath === "/" ? "/index.html" : safePath);
-  if (safePath.startsWith("/primitives/")){
-    const rel = safePath.slice("/primitives/".length);
+  const cleanedPath = path.posix.normalize(urlPath.replace(/\\/g, "/"));
+  const normalizedPath = cleanedPath === "." || cleanedPath.startsWith("..") ? "" : cleanedPath;
+  const safePath = normalizedPath.replace(/^\/+/, "");
+  const isPrimitives = safePath === "primitives" || safePath.startsWith("primitives/");
+  let filePath = path.join(publicRoot, safePath || "index.html");
+  if (isPrimitives) {
+    const rel = safePath.slice("primitives".length).replace(/^\/+/, "");
     filePath = path.join(primitivesRoot, rel);
   }
 
@@ -277,7 +282,10 @@ async function resolveCuraGcode(payload) {
     return data;
   }
 
-  const enginePath = payload?.enginePath || process.env.CURA_ENGINE_PATH || "CuraEngine";
+  const enginePath = payload?.enginePath
+    || process.env.CURA_ENGINE_PATH
+    || process.env.CURAENGINE_PATH
+    || "CuraEngine";
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gcode-studio-cura-"));
   const meshPath = path.join(tmpDir, "input.stl");
   const outPath = path.join(tmpDir, "output.gcode");
