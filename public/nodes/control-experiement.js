@@ -3,7 +3,7 @@ window.GCODE_STUDIO.NODE_DEFS = window.GCODE_STUDIO.NODE_DEFS || {};
 const controlExperimentNode = {
   title:"Control Experiment",
   tag:"generator",
-  desc:"Procedural path-first designs. Outputs a toolpath directly (no mesh slicing).",
+  desc:"Procedural path-first designs. Outputs a path directly (no mesh slicing).",
   inputs:[{name:"profile", type:"profile"}],
   outputs:[{name:"path", type:"path"}],
   initData:()=>({
@@ -317,5 +317,4 @@ const controlExperimentNode = {
   }
 };
 
-window.GCODE_STUDIO.NODE_DEFS['Control Experiement'] = controlExperimentNode;
 window.GCODE_STUDIO.NODE_DEFS['Control Experiment'] = controlExperimentNode;

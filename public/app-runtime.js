@@ -17,16 +17,39 @@ const nodeDefDiagnostics = {
   total: 0,
   lowCount: false,
   missingTypes: [],
+  duplicateTitles: [],
+  missingTags: [],
   warned: false,
 };
+function countVisibleNodeDefs(defs){
+  return Object.values(defs || {}).filter((def)=>!def?.hidden).length;
+}
+function findDuplicateTitles(defs){
+  const titleMap = new Map();
+  for(const [type, def] of Object.entries(defs || {})){
+    if(def?.hidden) continue;
+    const title = (def?.title || type || "").trim();
+    const key = title.toLowerCase();
+    if(!key) continue;
+    if(!titleMap.has(key)) titleMap.set(key, {title, types: []});
+    titleMap.get(key).types.push(type);
+  }
+  return Array.from(titleMap.values()).filter((entry)=>entry.types.length > 1);
+}
 const LOG_ENDPOINT = "/api/logs";
 function updateNodeDefDiagnostics(){
-  const total = Object.keys(NODE_DEFS || {}).length;
+  const total = countVisibleNodeDefs(NODE_DEFS);
   const missingTypes = EXPECTED_NODE_TYPES.filter((type)=>!NODE_DEFS?.[type]);
   const lowCount = total < EXPECTED_NODE_DEF_COUNT;
+  const duplicateTitles = findDuplicateTitles(NODE_DEFS);
+  const missingTags = Object.entries(NODE_DEFS || {})
+    .filter(([, def])=> def && !def.hidden && !String(def.tag || "").trim())
+    .map(([type])=>type);
   nodeDefDiagnostics.total = total;
   nodeDefDiagnostics.lowCount = lowCount;
   nodeDefDiagnostics.missingTypes = missingTypes;
+  nodeDefDiagnostics.duplicateTitles = duplicateTitles;
+  nodeDefDiagnostics.missingTags = missingTags;
   return nodeDefDiagnostics;
 }
 function sendNodeLog(payload){
@@ -610,14 +633,20 @@ function nodeCat(def){
 
 function rebuildNodePickerItems(){
   const diagnostics = updateNodeDefDiagnostics();
-  if((diagnostics.lowCount || diagnostics.missingTypes.length) && !nodeDefDiagnostics.warned){
+  if((diagnostics.lowCount || diagnostics.missingTypes.length || diagnostics.duplicateTitles.length || diagnostics.missingTags.length) && !nodeDefDiagnostics.warned){
     nodeDefDiagnostics.warned = true;
     const missingText = diagnostics.missingTypes.length
       ? `Missing types: ${diagnostics.missingTypes.join(", ")}.`
       : "No core node types missing.";
+    const duplicateText = diagnostics.duplicateTitles.length
+      ? ` Duplicate titles: ${diagnostics.duplicateTitles.map((dup)=>dup.title).join(", ")}.`
+      : "";
+    const missingTagText = diagnostics.missingTags.length
+      ? ` Missing tags: ${diagnostics.missingTags.join(", ")}.`
+      : "";
     console.warn(
       `[Node defs] Expected at least ${EXPECTED_NODE_DEF_COUNT} node defs, found ${diagnostics.total}. ${missingText} ` +
-      "Check the DevTools Console for script load errors."
+      `${duplicateText}${missingTagText} Check the DevTools Console for script load errors.`
     );
   }
   nodePicker.items = Object.entries(NODE_DEFS)
@@ -835,13 +864,19 @@ function renderNodeLibrary(){
   }
 
   const frag = document.createDocumentFragment();
-  if(diagnostics.lowCount || diagnostics.missingTypes.length){
+  if(diagnostics.lowCount || diagnostics.missingTypes.length || diagnostics.duplicateTitles.length || diagnostics.missingTags.length){
     const msg = document.createElement("div");
     msg.className = "hint";
     const missingText = diagnostics.missingTypes.length
       ? `Missing core nodes: ${diagnostics.missingTypes.join(", ")}.`
       : "Some node scripts may have failed to load.";
-    msg.innerHTML = `<b>Node count looks low</b><div style="margin-top:6px;opacity:.75">Found ${diagnostics.total} nodes, expected ~${EXPECTED_NODE_DEF_COUNT}. ${missingText} Check the DevTools Console for script load errors.</div>`;
+    const duplicateText = diagnostics.duplicateTitles.length
+      ? ` Duplicate titles: ${diagnostics.duplicateTitles.map((dup)=>dup.title).join(", ")}.`
+      : "";
+    const missingTagText = diagnostics.missingTags.length
+      ? ` Missing tags: ${diagnostics.missingTags.join(", ")}.`
+      : "";
+    msg.innerHTML = `<b>Node diagnostics</b><div style="margin-top:6px;opacity:.75">Found ${diagnostics.total} nodes, expected ~${EXPECTED_NODE_DEF_COUNT}. ${missingText}${duplicateText}${missingTagText} Check the DevTools Console for script load errors.</div>`;
     frag.appendChild(msg);
   }
   for(const [cat, list] of groups){
